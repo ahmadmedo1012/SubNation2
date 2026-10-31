@@ -153,9 +153,14 @@ export default function AdminSystemPage(): ReactElement | null {
     // admin-gated query left on a bare name.
     queryKey: ["admin-healthz-ready"],
     queryFn: fetchAdminHealthReady,
-    // Reduced 30 s → 60 s. Backend cache is 15 s; admin doesn't need
-    // sub-30 s granularity on health.
-    refetchInterval: 60_000,
+    // Reduced 30 s → 60 s → 300 s. Backend cache is 60 s (R192: was 15 s);
+    // admin doesn't need sub-30 s granularity on health.
+    // R192 (Neon compute-quota incident): 60 s → 300 s — every rebuild of
+    // the healthz aggregate WAKES a scale-to-zero database (its Neon leg
+    // is SELECT 1); a diagnostics tab open in a background window must
+    // not be a keep-alive loop. The in-memory metrics poll below keeps
+    // its own (DB-free) cadence.
+    refetchInterval: 300_000,
     refetchIntervalInBackground: false,
     staleTime: 30_000,
     retry: false,

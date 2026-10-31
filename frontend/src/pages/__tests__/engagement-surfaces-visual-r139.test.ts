@@ -286,15 +286,19 @@ describe("R139 recipe — the thread pair + the support chrome register", () => 
     expect(TICKETS_LIST).not.toContain("shadow-lg shadow-black/12");
   });
 
-  it("the FAQ accordion affordances are byte-identical — only the card edge moved", () => {
-    // R139 (precision): native <details> semantics, marker
-    // suppression and the group-open chevron rotator are the R137
-    // verbatim-move contract; the pin freezes the affordance trio so
-    // a future chrome pass can't quietly restructure them.
-    expect(FAQ).toContain("border-border/60");
-    expect(FAQ).toContain("[&_summary::-webkit-details-marker]:hidden");
-    expect(FAQ).toContain("group-open:-rotate-90");
-    expect(FAQ).not.toContain("border-border/55");
+  it("the FAQ accordion affordances are byte-identical — via the R192 shared component", () => {
+    // R139 froze the affordance trio so a chrome pass couldn't quietly
+    // restructure it; R192 (T2-3) converged the drifted twins onto ONE
+    // shared FaqAccordion — the trio now lives there (and the sideways
+    // -rotate-90 chevron the twins had drifted onto is gone for good:
+    // the ChevronDown rotator contract, FINAL_UX_SYSTEM §5.1).
+    const ACCORDION = stripComments(read("src/components/faq-accordion.tsx"));
+    expect(FAQ).toContain("<FaqAccordion items={SUPPORT_FAQ} />");
+    expect(ACCORDION).toContain("border-border/60");
+    expect(ACCORDION).toContain("[&_summary::-webkit-details-marker]:hidden");
+    expect(ACCORDION).toContain("group-open:rotate-180");
+    expect(ACCORDION).not.toContain("group-open:-rotate-90");
+    expect(ACCORDION).not.toContain("border-border/55");
   });
 
   it("the no-messages tile joins the shared icon-stage family", () => {

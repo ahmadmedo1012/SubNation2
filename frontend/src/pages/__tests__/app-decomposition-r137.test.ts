@@ -176,9 +176,12 @@ describe("R137 (FE) — the pre-R137 public API keeps resolving (ownership/API p
     expect(app).toContain(
       'export { ProductsAliasRedirect, ScrollToTop, RouteAnnouncer } from "@/app/routes";',
     );
-    expect(app).toContain(
-      'export { DeferredSocketInitializer, IdleToaster } from "@/app/app-shell";',
-    );
+    expect(app).toContain("export {");
+    expect(app).toContain("DeferredSocketInitializer,");
+    expect(app).toContain("IdleToaster,");
+    // R192 (T2-1): the connectivity cue joined the re-export family.
+    expect(app).toContain("DeferredConnectivityBanner,");
+    expect(app).toContain('} from "@/app/app-shell";');
     // …and the two halves that stayed local, plus the default export
     // main.tsx mounts.
     expect(app).toContain("export default App;");

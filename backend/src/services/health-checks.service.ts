@@ -48,8 +48,21 @@ import { getReleaseSha } from "../lib/release-sha";
 // fans out per-instance, which is correct: each instance reports its
 // own readiness, and the load multiplier is bounded by N_instances
 // rather than N_concurrent_users.
+//
+// R192 (the Neon compute-quota incident): 15 s → 60 s. The aggregate's
+// Neon leg is TWO SELECT 1 (the R117 warm-up + the measured probe), and
+// every rebuild WAKES a scale-to-zero endpoint — at 15 s, a single
+// /status tab (5-min poll) plus the admin system page's readiness poll
+// rebuilt the aggregate often enough to matter for the free-plan
+// compute budget. 60 s bounds the aggregate to ≤ 1 rebuild/min under
+// CONTINUOUS demand (a 2-probe wake costing seconds of compute), and
+// the public /status page's 5-min poll now usually hits a warm cache
+// entry only when something else queried anyway. The R117 warm-up
+// probe stays — removing it would reintroduce the cold-resume "degraded"
+// flapping it closed (5/5 degraded probes on an idle store, measured
+// live 2026-10-05); the wake cost is the cache's job to bound.
 // ──────────────────────────────────────────────────────────────────────────────
-const CACHE_TTL_MS = 15_000;
+const CACHE_TTL_MS = 60_000;
 let cachedResponse: { value: HealthCheckResponseExtended; expiresAt: number } | null = null;
 let inflight: Promise<HealthCheckResponseExtended> | null = null;
 

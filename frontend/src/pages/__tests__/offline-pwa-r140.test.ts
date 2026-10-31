@@ -374,11 +374,16 @@ describe("R-140-n (c) — manifest.json completeness (public/manifest.json)", ()
   });
 });
 
-describe("R-140-n (d) — network-state UX is a DOCUMENTED gap (no navigator.onLine anywhere)", () => {
-  it("no app source file reads navigator.onLine or listens to online/offline events", () => {
-    // Deliberate pin of ABSENCE: the app has no offline banner/detection
-    // and never guesses connectivity. Adding one is a family decision —
-    // update this pin + the r140-n worklog proposal together.
+describe("R-140-n (d) — network-state UX: the R192 connectivity cue (the ONE sanctioned consumer)", () => {
+  it("navigator.onLine / offline events appear in exactly ONE file — the ConnectivityBanner", () => {
+    // R140 pinned the ABSENCE ("adding one is a family decision —
+    // update this pin + the worklog proposal together"). R192 (T2-1)
+    // made that family decision: the global connectivity cue landed
+    // (components/layout/ConnectivityBanner.tsx — the audit's design:
+    // onLine treated as a HINT, false = signal, true = no-op, the
+    // offline→online transition hedged «عاد الاتصال بالشبكة»). The pin
+    // now guards the SINGLE-consumer rule so connectivity guessing
+    // can't quietly spread across surfaces.
     const offenders: string[] = [];
     for (const file of walkAppSources(resolve(process.cwd(), "src"))) {
       const code = stripComments(readFileSync(file, "utf8"));
@@ -386,7 +391,9 @@ describe("R-140-n (d) — network-state UX is a DOCUMENTED gap (no navigator.onL
         offenders.push(file);
       }
     }
-    expect(offenders).toEqual([]);
+    expect(offenders).toEqual([
+      resolve(process.cwd(), "src/components/layout/ConnectivityBanner.tsx"),
+    ]);
   });
 
   it("offline /status stays calm: healthz never throws — degrades to the «degraded» fallback", () => {

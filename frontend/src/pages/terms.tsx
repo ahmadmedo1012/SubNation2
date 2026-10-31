@@ -18,36 +18,89 @@ const TABS: { id: Tab; label: string; Icon: typeof FileText }[] = [
  */
 function tabFromHash(hash: string): Tab {
   const id = (hash || "").replace(/^#/, "").toLowerCase();
-  return id === "privacy" ? "privacy" : "terms";
+  // R192 (T1-5): tab-qualified section anchors (#privacy-s3) keep their
+  // tab — the hashchange listener must not flip back to terms when the
+  // user navigates inside the privacy tab's own TOC.
+  return id === "privacy" || id.startsWith("privacy-") ? "privacy" : "terms";
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  prefix,
+  children,
+}: {
+  title: string;
+  /** R192 (T1-5): the tab qualifier for the anchor id ("terms" | "privacy"). */
+  prefix: Tab;
+  children: React.ReactNode;
+}) {
+  // R192 (T1-5): every section carries a stable, tab-qualified anchor id
+  // derived from its leading number (`/terms#terms-s5` → الاسترداد;
+  // `/terms#privacy-s5` → حقوقك) so money-path surfaces can link the
+  // exact policy prose — and the hash itself carries which tab it lands
+  // on. scroll-mt-24 keeps the anchored heading below the sticky header.
+  const anchorId = /^\d+\./.test(title) ? `${prefix}-s${title.split(".")[0]}` : undefined;
   return (
-    <section className="space-y-3">
+    <section className="space-y-3" id={anchorId}>
       {/* R125-I7 (A7 B-12 / R124-A3 #12): border-r-2 → border-r — 1px is
           the craft-floor cap for colored heading stripes. R130 (A2-F5):
           the pair rides the logical axis (border-s/ps-) — same rendered
           edge in this RTL-only app, future-proof for any dir switch. */}
-      <h2 className="text-base font-bold text-foreground border-s border-primary ps-3">{title}</h2>
+      <h2 className="text-base font-bold text-foreground border-s border-primary ps-3 scroll-mt-24">
+        {title}
+      </h2>
       <div className="text-sm text-muted-foreground leading-7 space-y-2">{children}</div>
     </section>
+  );
+}
+
+const TERMS_TOC = [
+  { id: "terms-s4", label: "الأسعار والدفع" },
+  { id: "terms-s5", label: "التسليم والاسترداد" },
+  { id: "terms-s3", label: "حساب المستخدم" },
+  { id: "terms-s6", label: "المسؤولية" },
+] as const;
+
+const PRIVACY_TOC = [
+  { id: "privacy-s1", label: "البيانات التي نجمعها" },
+  { id: "privacy-s3", label: "مشاركة البيانات" },
+  { id: "privacy-s5", label: "حقوقك" },
+] as const;
+
+/** R192 (T1-5): the long-form quick-nav — same-tab anchor chips (the
+ *  tabFromHash contract already owns the #privacy tab switch, so these
+ *  ride plain <a href="#section-N"> navigation within the active tab). */
+function TocChips({ items }: { items: readonly { id: string; label: string }[] }) {
+  return (
+    <nav aria-label="أقسام الصفحة" className="flex flex-wrap gap-2 pb-1">
+      {items.map((item) => (
+        <a
+          key={item.id}
+          href={`#${item.id}`}
+          className="text-xs px-2.5 py-1.5 rounded-full border border-border/40 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/15 transition-colors"
+        >
+          {item.label}
+        </a>
+      ))}
+    </nav>
   );
 }
 
 function TermsContent() {
   return (
     <div className="space-y-8">
+      <TocChips items={TERMS_TOC} />
       {/* 93-C8 (A11 §3/§12): Latin numerals per the site-wide number
           convention (utils.ts pins en-US digits) — the section numbers
           were the only Arabic-Indic islands left in the legal copy. */}
-      <Section title="1. قبول الشروط">
+      <Section prefix="terms" title="1. قبول الشروط">
         <p>
           باستخدامك لمنصة SubNation، فإنك توافق على الالتزام بهذه الشروط والأحكام. إذا كنت لا توافق
           على أي من هذه الشروط، يُرجى عدم استخدام الخدمة.
         </p>
       </Section>
 
-      <Section title="2. طبيعة الخدمة">
+      <Section prefix="terms" title="2. طبيعة الخدمة">
         <p>
           {/* R123-E4b (P3-i): PS Plus removed — the gaming category was
               archived 2026-09-19 (R120/R122 scrubbed it from the rest of
@@ -64,7 +117,7 @@ function TermsContent() {
         </p>
       </Section>
 
-      <Section title="3. حساب المستخدم">
+      <Section prefix="terms" title="3. حساب المستخدم">
         {/* 93-C8 (A11 §2 top-20 #6 — legal honesty): SubNation is a
             passwordless platform (Google / Telegram / WhatsApp OTP —
             login.tsx states "بدون كلمة مرور"). The old text promised
@@ -80,7 +133,7 @@ function TermsContent() {
         <p>نحتفظ بالحق في تعليق أو إنهاء أي حساب يخالف هذه الشروط.</p>
       </Section>
 
-      <Section title="4. الأسعار والدفع">
+      <Section prefix="terms" title="4. الأسعار والدفع">
         <p>جميع الأسعار بالدينار الليبي (د.ل) وقابلة للتغيير دون إشعار مسبق.</p>
         <p>
           {/* R120-B5 (copy): «تحويل مصرفي» — the wallet page's canonical
@@ -90,7 +143,7 @@ function TermsContent() {
         </p>
       </Section>
 
-      <Section title="5. التسليم والاسترداد">
+      <Section prefix="terms" title="5. التسليم والاسترداد">
         <p>
           يتم تسليم بيانات الاشتراك فور التحقق من الدفع. في حال وجود خطأ في البيانات المُسلَّمة،
           يُرجى التواصل مع الدعم خلال 24 ساعة.
@@ -101,14 +154,14 @@ function TermsContent() {
         </p>
       </Section>
 
-      <Section title="6. المسؤولية">
+      <Section prefix="terms" title="6. المسؤولية">
         <p>
           SubNation ليست مسؤولة عن أي انقطاع أو تغيير في خدمات الطرف الثالث (مثل Netflix وSpotify).
           في حال انتهاء خدمة بسبب سياسة المزود، يُبذل أقصى جهد لتعويض المستخدمين المتضررين.
         </p>
       </Section>
 
-      <Section title="7. التعديلات">
+      <Section prefix="terms" title="7. التعديلات">
         <p>
           نحتفظ بحق تعديل هذه الشروط في أي وقت. سيتم إخطار المستخدمين بالتغييرات الجوهرية عبر
           الإشعارات داخل التطبيق.
@@ -134,13 +187,14 @@ function TermsContent() {
 function PrivacyContent() {
   return (
     <div className="space-y-8">
-      <Section title="1. البيانات التي نجمعها">
+      <TocChips items={PRIVACY_TOC} />
+      <Section prefix="privacy" title="1. البيانات التي نجمعها">
         <p>عند التسجيل: رقم الهاتف (مطلوب للتحقق والتواصل).</p>
         <p>عند الشراء: بيانات الطلبات وطرق الدفع المستخدمة.</p>
         <p>تلقائياً: بيانات الاستخدام وسجلات الجلسات لتحسين الخدمة.</p>
       </Section>
 
-      <Section title="2. كيف نستخدم بياناتك">
+      <Section prefix="privacy" title="2. كيف نستخدم بياناتك">
         <ul className="space-y-1.5 list-disc list-inside marker:text-primary/50">
           <li>معالجة الطلبات وتسليم المنتجات.</li>
           <li>إرسال إشعارات حول حالة الطلبات والشحن.</li>
@@ -149,14 +203,14 @@ function PrivacyContent() {
         </ul>
       </Section>
 
-      <Section title="3. مشاركة البيانات">
+      <Section prefix="privacy" title="3. مشاركة البيانات">
         <p>
           لا نبيع أو نؤجر بياناتك الشخصية لأطراف ثالثة. قد نشارك بيانات محدودة مع مزودي الخدمة
           الضروريين (مثل معالجات الدفع) لأغراض تقنية فقط.
         </p>
       </Section>
 
-      <Section title="4. أمان البيانات">
+      <Section prefix="privacy" title="4. أمان البيانات">
         {/* 93-C8 (A11 §2 top-20 #6 — privacy §4 rewrite): the old text
             claimed encrypted stored passwords — the platform stores no
             user passwords at all (passwordless: OTP / Google /
@@ -170,14 +224,14 @@ function PrivacyContent() {
         </p>
       </Section>
 
-      <Section title="5. حقوقك">
+      <Section prefix="privacy" title="5. حقوقك">
         <p>
           يحق لك في أي وقت: طلب الاطلاع على بياناتك، تصحيحها، أو حذف حسابك كلياً عبر التواصل مع
           الدعم.
         </p>
       </Section>
 
-      <Section title="6. ملفات تعريف الارتباط">
+      <Section prefix="privacy" title="6. ملفات تعريف الارتباط">
         <p>
           نستخدم التخزين المحلي (localStorage) فقط لحفظ إعدادات الجلسة والمظهر. لا نستخدم ملفات تتبع
           إعلانية.

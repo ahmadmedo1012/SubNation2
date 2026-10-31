@@ -513,7 +513,9 @@ export default function ReferralsPage() {
             </div>
 
             {loading ? (
-              <div>
+              // R192 (T1-4): the loading swap announces itself to AT
+              // (the RouteSkeleton role="status" aria-live idiom).
+              <div role="status" aria-live="polite">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <SkeletonRow key={i} />
                 ))}

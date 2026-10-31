@@ -133,7 +133,13 @@ export default function AdminAlertsPage() {
           : lastPage.alerts.length === ALERTS_PAGE_SIZE
             ? allPages.length + 1
             : undefined,
-    refetchInterval: 20_000,
+    refetchInterval: 60_000,
+    // R192 (Neon compute-quota incident): 20 s → 60 s — the alerts list
+    // ALSO refreshes instantly on the admin-alert-new socket push
+    // (the layout's toast poller invalidates the family), so the poll is
+    // only the fallback; 20 s tripled the DB-read load of an open
+    // diagnostics tab against a scale-to-zero database for no freshness
+    // the socket does not already deliver.
     refetchIntervalInBackground: false,
     enabled: !!adminToken && canView,
   });

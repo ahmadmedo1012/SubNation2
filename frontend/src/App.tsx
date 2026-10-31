@@ -36,7 +36,11 @@ import { Router as WouterRouter } from "wouter";
 
 import { queryClient } from "@/app/query-client";
 import { AppRoutes } from "@/app/routes";
-import { DeferredSocketInitializer, IdleToaster } from "@/app/app-shell";
+import {
+  DeferredConnectivityBanner,
+  DeferredSocketInitializer,
+  IdleToaster,
+} from "@/app/app-shell";
 
 // ── Pre-R137 public API — preserved verbatim (API compat) ────────────────
 // The implementations moved to the src/app/* modules; every import of
@@ -50,7 +54,11 @@ export { isRetryableQueryError } from "@/app/query-client";
 export { bootCardImageWarmUrls, isHomeBootPath } from "@/app/boot-head-start";
 export { routeWarmupFamilyForPath } from "@/app/route-chunk-warmup";
 export { ProductsAliasRedirect, ScrollToTop, RouteAnnouncer } from "@/app/routes";
-export { DeferredSocketInitializer, IdleToaster } from "@/app/app-shell";
+export {
+  DeferredConnectivityBanner,
+  DeferredSocketInitializer,
+  IdleToaster,
+} from "@/app/app-shell";
 
 function App() {
   // Lock document direction once at boot. Defends against any descendant
@@ -84,6 +92,10 @@ function App() {
             the idle mount. Needs ThemeProvider (useTheme), nothing
             from auth. */}
         <IdleToaster />
+        {/* R192 (T2-1): the global connectivity cue — environment state,
+            not user state (mounts outside the auth gate, renders null
+            while online-and-stable). */}
+        <DeferredConnectivityBanner />
       </ThemeProvider>
     </QueryClientProvider>
   );

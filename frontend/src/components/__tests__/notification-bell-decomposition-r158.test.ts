@@ -116,8 +116,13 @@ describe("R158 (hooks lane) — useNotifications owns the poll/loadState/mark-re
     expect(hook).toContain("const unread = notifs.filter((n) => !n.is_read).length;");
   });
 
-  it("the hook owns the freshness machinery (60 s visible-tab poll + both socket accelerators + visibility gate)", () => {
-    expect(hook).toContain("setInterval(() => void fetchAll(), 60_000);");
+  it("the hook owns the freshness machinery (visible-tab poll + both socket accelerators + visibility gate)", () => {
+    // R192 (Neon compute-quota incident): the cadence moved 60 s → 120 s
+    // behind the named constant — the pin follows the constant (the
+    // comment above it documents the why; the literal interval is no
+    // longer duplicated at the two setInterval sites).
+    expect(hook).toContain("const NOTIFICATION_POLL_INTERVAL_MS = 120_000;");
+    expect(hook).toContain("setInterval(() => void fetchAll(), NOTIFICATION_POLL_INTERVAL_MS);");
     expect(hook).toContain(
       "window.addEventListener(NOTIFICATION_NEW_EVENT, onSocketNotification);",
     );

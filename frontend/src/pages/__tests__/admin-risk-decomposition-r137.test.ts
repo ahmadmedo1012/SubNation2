@@ -68,7 +68,10 @@ describe("R137 (FE) — admin/risk.tsx decomposition: page stays an orchestratio
     // The 30s dashboard poller (with the 96-F7 hidden-tab pause + the
     // R123/R125-I4 token+scope enabled gates).
     expect(page).toContain('queryKey: ["admin-risk-dashboard"],');
-    expect(page).toContain("refetchInterval: 30_000,");
+    // R192 (Neon compute-quota incident): the dashboard poll moved
+    // 30 s → 60 s (one-minute ops granularity; the comment block above
+    // the value documents the scale-to-zero rationale).
+    expect(page).toContain("refetchInterval: 60_000,");
     expect(page).toContain("refetchIntervalInBackground: false,");
     // The accumulating events infinite query — the load-more key
     // segment, the next_cursor envelope contract and the queue action.

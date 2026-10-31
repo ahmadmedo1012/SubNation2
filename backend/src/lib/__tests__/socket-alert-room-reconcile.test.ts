@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { adminUsersTable, db, initTestDb, resetTestDb } from "../../test/db";
 import type { Socket } from "socket.io";
 import { ADMIN_ALERTS_ROOM, reverifyAndEnforce, type SocketIdentity } from "../socket";
+import { __clearAdminRowCacheForTests } from "../admin-user-row-cache";
 
 /**
  * R127-B6-1 (B6 sockets audit) — alert-room scope reconciliation in
@@ -81,6 +82,10 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await resetTestDb();
+  // R192: the admin row cache would carry the previous test's cached
+  // permissions for the reused id-1 admin across the identity restart —
+  // this suite's whole point is per-tick permission reconciliation.
+  __clearAdminRowCacheForTests();
 });
 
 describe("reverifyAndEnforce — alert-room scope reconciliation (R127-B6-1)", () => {

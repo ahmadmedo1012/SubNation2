@@ -1,5 +1,5 @@
-import { ChevronLeft } from "lucide-react";
 import { SUPPORT_FAQ } from "./support-faq";
+import { FaqAccordion } from "@/components/faq-accordion";
 
 // R137 (FE decomposition): extracted verbatim from pages/support.tsx —
 // the visible FAQ section (the <details> accordion over SUPPORT_FAQ).
@@ -7,8 +7,9 @@ import { SUPPORT_FAQ } from "./support-faq";
 // visible on the page; this extract and the page's useSeo
 // buildFaqLd(SUPPORT_FAQ) block read the SAME support-faq.ts module —
 // one source, two surfaces (pinned by support-faq-copy.test.tsx).
-// Presentational only: zero props, zero state — the accordion's open
-// state is the browser's native <details> semantics, untouched.
+// R192 (T2-3): the accordion markup itself converged onto the shared
+// FaqAccordion (the category twin + this one had drifted onto sideways
+// chevrons together — the contract now lives in one place).
 
 export function FaqSection() {
   return (
@@ -19,27 +20,7 @@ export function FaqSection() {
       <p className="text-xs text-muted-foreground mb-4">
         الأسئلة التي يطرحها المستخدمون قبل أول عملية شراء — اضغط على أي سؤال لرؤية الإجابة.
       </p>
-      <div className="space-y-2">
-        {SUPPORT_FAQ.map((item, i) => (
-          <details
-            key={i}
-            className="group bg-card border border-border/60 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none"
-          >
-            {/* R139 (precision): /55 → /60 — the card-family resting edge
-                (one value grid-wide). The accordion affordances — summary
-                semantics, marker suppression, the group-open chevron
-                rotator — are byte-identical (the R137 extraction's
-                "verbatim move" contract). */}
-            <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-muted/15 transition-colors select-none">
-              <span className="text-sm font-bold flex-1">{item.question}</span>
-              <ChevronLeft className="w-4 h-4 text-muted-foreground transition-transform group-open:-rotate-90 shrink-0" />
-            </summary>
-            <div className="px-4 pt-1 pb-4 border-t border-border/20 text-sm text-muted-foreground leading-relaxed">
-              {item.answer}
-            </div>
-          </details>
-        ))}
-      </div>
+      <FaqAccordion items={SUPPORT_FAQ} />
     </section>
   );
 }
