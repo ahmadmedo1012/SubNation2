@@ -48,8 +48,15 @@ COPY shared/api-client-react/package.json shared/api-client-react/package.json
 COPY shared/api-zod/package.json          shared/api-zod/package.json
 COPY shared/api-spec/package.json         shared/api-spec/package.json
 COPY shared/db/package.json               shared/db/package.json
+COPY shared/api-client-native/package.json shared/api-client-native/package.json
+# R191: the mobile workspace manifest must exist for pnpm to parse the
+# workspace graph, but its Expo/RN dependency tree (~1 GB) never belongs
+# in the production image build — the negative filter below installs
+# everything EXCEPT @workspace/mobile (root + backend + frontend + shared
+# + scripts, devDeps included, exactly the pre-R191 surface).
+COPY apps/mobile/package.json    apps/mobile/package.json
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm install --frozen-lockfile --filter "!@workspace/mobile"
 
 # --- build: typecheck + build backend and frontend ----------------------------
 FROM deps AS build
@@ -254,6 +261,11 @@ COPY --from=build /app/shared/api-client-react/package.json ./shared/api-client-
 COPY --from=build /app/shared/api-zod/package.json          ./shared/api-zod/package.json
 COPY --from=build /app/shared/api-spec/package.json         ./shared/api-spec/package.json
 COPY --from=build /app/shared/db/package.json               ./shared/db/package.json
+COPY --from=build /app/shared/api-client-native/package.json ./shared/api-client-native/package.json
+# R191: same manifest-parity rule — pnpm parses the whole workspace (mobile
+# included) even though this --prod --filter @workspace/api-server... install
+# never links its tree.
+COPY --from=build /app/apps/mobile/package.json    ./apps/mobile/package.json
 
 # R109 P0-1: the root `prepare: husky` script runs under this --prod install,
 # but husky is a devDependency (absent here) -> `husky: not found` -> exit 1

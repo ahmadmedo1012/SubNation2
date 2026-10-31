@@ -5,7 +5,18 @@ import { fileURLToPath } from "url";
 const packageDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(packageDir, "..", "..");
 const apiClientReactSrc = path.resolve(root, "shared", "api-client-react", "src");
+const apiClientNativeSrc = path.resolve(root, "shared", "api-client-native", "src");
 const apiZodSrc = path.resolve(root, "shared", "api-zod", "src");
+
+// R191: the api-client-native twin exists because ONE physical shared client
+// cannot serve two React worlds — the web pins react 19.1.0 (the owner's
+// eager-bundle budget) while the Expo app rides react 19.3.0 (SDK 58). A
+// single package's react-query dependency edge can only peer to ONE react,
+// and whichever it picks breaks the other side's QueryClient context (the
+// R172 two-instance law, re-proven R191). The twin is generated from the
+// SAME spec with the SAME options; only its mutator copy (custom-fetch.ts,
+// duplicated verbatim — keep both copies in lockstep) and its consumer
+// (apps/mobile) differ. The web MUST keep importing @workspace/api-client-react.
 
 // Our exports make assumptions about the title of the API being "Api" (i.e. generated output is `api.ts`).
 const titleTransformer: InputTransformerFn = (config) => {
@@ -46,6 +57,35 @@ export default defineConfig({
         },
         mutator: {
           path: path.resolve(apiClientReactSrc, "custom-fetch.ts"),
+          name: "customFetch",
+        },
+      },
+    },
+  },
+  "api-client-native": {
+    input: {
+      target: "./openapi.yaml",
+      override: {
+        transformer: titleTransformer,
+      },
+    },
+    output: {
+      workspace: apiClientNativeSrc,
+      target: "generated",
+      client: "react-query",
+      mode: "split",
+      baseUrl: "/api",
+      clean: true,
+      formatter: "prettier",
+      override: {
+        fetch: {
+          includeHttpResponseReturnType: false,
+        },
+        query: {
+          version: 5,
+        },
+        mutator: {
+          path: path.resolve(apiClientNativeSrc, "custom-fetch.ts"),
           name: "customFetch",
         },
       },

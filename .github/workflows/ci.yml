@@ -147,6 +147,10 @@ jobs:
               - "frontend/**"
               - "shared/**"
               - "scripts/**"
+              # R191: the native Expo app joins the workspace — its source
+              # must trip the heavy jobs (lint/typecheck/tests/build) just
+              # like backend/frontend.
+              - "apps/mobile/**"
               - "config/**"
               - "deploy/**"
               - "package.json"

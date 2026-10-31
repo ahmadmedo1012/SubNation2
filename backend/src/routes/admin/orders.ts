@@ -156,6 +156,20 @@ async function notifyOrderStatusChangedBatch(
       .catch((err) =>
         logger.warn({ err }, "bulk status notification socket emit failed (non-fatal)"),
       );
+    // R191 (backend mobile contracts): the mobile arm — same best-effort
+    // push per buyer createNotification sends (the admin bulk-status flip
+    // is the ONE notification writer that bypasses notify.ts's central
+    // point, so it wires the same fire-and-forget dispatch here). Titles
+    // are the row's own generic Arabic status label — never credentials.
+    import("../../services/push.service")
+      .then(({ sendPushToUser }) => {
+        for (const row of rows) {
+          void sendPushToUser(row.userId, { title: row.title, body: "" }).catch(() => {});
+        }
+      })
+      .catch((err) =>
+        logger.warn({ err }, "bulk status notification push dispatch failed (non-fatal)"),
+      );
   } catch (err) {
     logger.warn(
       {

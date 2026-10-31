@@ -92,7 +92,7 @@ export interface TelegramOidcClientConfig {
 }
 
 export type TelegramOidcFlowResult =
-  | { ok: true; token: string; isNewUser: boolean; redirect: string | null }
+  | { ok: true; token: string; isNewUser: boolean; redirect: string | null; native?: true }
   | { ok: false; status: number; reason: string; error: string };
 
 /** Resolved `auth.telegram` settings with OIDC credentials present. */
@@ -157,6 +157,10 @@ export async function startTelegramOidcFlow(input: {
   originHeader: string | undefined;
   redirect: string | null;
   referralCode: string | null;
+  /** R191: the native app started this flow (?native=1) — the callback
+   * redirects the minted session to the app's own URL scheme. Optional
+   * so the web callers (and the pinned tests) keep their shape. */
+  native?: boolean;
 }): Promise<TelegramOidcStart | { error: "provider_disabled" | "misconfigured_origin" }> {
   const cfg = await resolveOidcConfig();
   if (!cfg) return { error: "provider_disabled" };
@@ -171,6 +175,7 @@ export async function startTelegramOidcFlow(input: {
     nonce,
     redirect: sanitizeInternalPath(input.redirect),
     referralCode: input.referralCode ? input.referralCode.trim().toUpperCase().slice(0, 16) : null,
+    native: input.native === true,
     createdAt: Date.now(),
   };
   await storeTelegramOidcState(state, value);
@@ -694,7 +699,15 @@ export async function completeTelegramOidcLogin(input: {
     );
   });
 
-  return { ok: true, token, isNewUser, redirect: stored.redirect };
+  return {
+    ok: true,
+    token,
+    isNewUser,
+    redirect: stored.redirect,
+    // R191: the native flag rides the single-use state — only the flow
+    // the app itself started gets the app-scheme redirect.
+    ...(stored.native ? { native: true as const } : {}),
+  };
 }
 
 // R166-B6: `isTelegramOidcConfigured` (a resolveOidcConfig() !== null probe

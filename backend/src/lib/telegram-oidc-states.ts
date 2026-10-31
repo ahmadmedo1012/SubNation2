@@ -39,6 +39,13 @@ export interface TelegramOidcStateValue {
   redirect: string | null;
   /** Referral code captured at flow start (uppercase, ≤16). */
   referralCode: string | null;
+  /**
+   * R191 (backend mobile contracts): the flow was started by the NATIVE
+   * app (?native=1) — the callback must hand the minted session to the
+   * app's own URL scheme instead of the web redirect. Absent/false = the
+   * ordinary web flow.
+   */
+  native?: boolean;
   /** Creation epoch ms (fallback-store expiry + telemetry). */
   createdAt: number;
 }
@@ -137,6 +144,8 @@ function parseStateValue(raw: string): TelegramOidcStateValue | null {
       nonce: parsed.nonce,
       redirect: typeof parsed.redirect === "string" ? parsed.redirect : null,
       referralCode: typeof parsed.referralCode === "string" ? parsed.referralCode : null,
+      // R191: pre-native Redis entries (mid-rollout) carry no flag → web.
+      native: parsed.native === true,
       createdAt: parsed.createdAt,
     };
   } catch {

@@ -9,10 +9,13 @@
  *                                          + cross-window postMessage are blocked)
  *   GET  /telegram/oidc/login          → R154: start the modern OIDC Authorization
  *                                          Code Flow with PKCE (302 to
- *                                          oauth.telegram.org)
+ *                                          oauth.telegram.org); R191: ?native=1
+ *                                          flags a native-app flow
  *   GET  /telegram/oidc/callback       → R154: complete the OIDC flow (state +
  *                                          PKCE + nonce + RS256/JWKS ID-token
- *                                          validation) and mint the session
+ *                                          validation) and mint the session;
+ *                                          R191: native flows 302 to
+ *                                          subnation://auth/callback#token=…
  *
  * Admin (mount at /admin/settings):
  *   GET   /auth              → list all providers (masked secrets)
@@ -632,10 +635,18 @@ function loginErrorRedirect(req: Request, error: string): string {
 authProviderPublicRouter.get("/telegram/oidc/login", async (req, res) => {
   try {
     const query = req.query as Record<string, string | undefined>;
+    // R191 (backend mobile contracts): ?native=1 — the native app started
+    // this flow in the system browser; the state carries the flag and the
+    // callback then hands the minted session to the app's own URL scheme
+    // (subnation://auth/callback#token=…). Everything else (state
+    // single-use + 10-min TTL + PKCE) is identical to the web flow.
+    const nativeParam = query.native ?? query.native_client;
+    const native = nativeParam === "1" || nativeParam === "true";
     const start = await startTelegramOidcFlow({
       originHeader: (req.headers.origin as string | undefined) ?? undefined,
       redirect: typeof query.redirect === "string" ? query.redirect : null,
       referralCode: typeof query.ref === "string" ? query.ref : null,
+      native,
     });
     if ("error" in start) {
       // provider_disabled | misconfigured_origin — both are honest
@@ -697,6 +708,18 @@ authProviderPublicRouter.get("/telegram/oidc/callback", async (req, res) => {
     res.cookie("auth_token", result.token, {
       ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
     });
+    // R191 (backend mobile contracts): a NATIVE flow (state.native — set
+    // only when the login hop carried ?native=1) hands the session to the
+    // app's own URL scheme instead of the web redirect: 302 to
+    // subnation://auth/callback#token=<jwt> (URL-encoded; the fragment
+    // never reaches any server/proxy log the way a query string would).
+    // The OS routes the scheme to the installed app — no web page is
+    // involved. The state stays single-use + TTL + PKCE-verified (the
+    // flag rode the SAME server-held state), and the login was audited in
+    // the same logAuthActivity path as every web login, inside the flow.
+    if (result.native) {
+      return res.redirect(`subnation://auth/callback#token=${encodeURIComponent(result.token)}`);
+    }
     return res.redirect(result.redirect ?? "/auth/callback");
   } catch (err) {
     Sentry.captureException(err);

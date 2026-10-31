@@ -521,6 +521,27 @@ CREATE TABLE notifications (
 -- boot swap converge (user_id, created_at DESC) for the bell sort.
 CREATE INDEX idx_notifications_user ON notifications (user_id, created_at DESC);
 
+-- R191 (V1-M37): push_tokens — prod parity (migrate/stages/05-push-tokens-
+-- r191.ts + schema/push-tokens.ts + drizzle chain 0028): same constraint
+-- names (push_tokens_expo_push_token_unique, chk_push_tokens_platform,
+-- push_tokens_user_id_users_id_fk) so the push-token route suite certifies
+-- the REAL schema.
+CREATE TABLE push_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id integer NOT NULL,
+  CONSTRAINT push_tokens_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  expo_push_token varchar(255) NOT NULL,
+  CONSTRAINT push_tokens_expo_push_token_unique UNIQUE (expo_push_token),
+  platform varchar(16) NOT NULL,
+  CONSTRAINT chk_push_tokens_platform CHECK (platform IN ('android','ios')),
+  device_label varchar(255),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  last_seen_at timestamptz NOT NULL DEFAULT now(),
+  revoked_at timestamptz
+);
+CREATE INDEX idx_push_tokens_user_id ON push_tokens (user_id);
+
 -- V1-M9 (B8-10) composites for the admin "status + newest-first" lists,
 -- declared by the schema TS and created by applyMoneyConstraintStage.
 -- R123-E5 (V1-M27): idx_cart_items_user dropped — a strict prefix of
@@ -553,6 +574,7 @@ const TABLES = [
   "support_tickets",
   "audit_logs",
   "notifications",
+  "push_tokens",
 ];
 
 /** Build the fresh schema once. Call in a global beforeAll. */
