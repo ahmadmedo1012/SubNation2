@@ -45,6 +45,29 @@ export async function createNotification(
       .catch((err) =>
         logger.warn({ err, userId, type }, "createNotification: socket emit failed (non-fatal)"),
       );
+
+    // R191 (backend mobile contracts): the SAME notification, best-effort,
+    // to every device the user registered an Expo push token for — the
+    // mobile arm of this central notification-creation point (every caller
+    // fires post-commit, M16 discipline; createNotification itself is the
+    // single wiring point for topup approved/rejected, order received,
+    // welcome/referral credits, support replies). sendPushToUser never
+    // throws and never retries; the .catch is a defensive belt only. Same
+    // dynamic-import shape as the socket emit above (keeps the Expo fetch
+    // + push_tokens table out of every importer's module-eval path).
+    import("./services/push.service")
+      .then(({ sendPushToUser }) => {
+        // Payload safety: title/message are the generic Arabic notification
+        // strings this row already carries — never credentials/secrets.
+        void sendPushToUser(userId, {
+          title,
+          body: message ?? "",
+          data: link ? { link } : undefined,
+        }).catch(() => {});
+      })
+      .catch((err) =>
+        logger.warn({ err, userId, type }, "createNotification: push dispatch failed (non-fatal)"),
+      );
   } catch (err) {
     logger.warn(
       {

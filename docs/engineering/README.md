@@ -1,6 +1,7 @@
 # Engineering — Round Records Index (R142+)
 
-> Status: CURRENT @ 2026-10-26 (R188 — the rotated-lenses perfection
+> Status: CURRENT @ 2026-10-31 (R191 — the native Expo application
+> lands: the R191 row + folder count 44→**45**; prior status R188 — the rotated-lenses perfection
 > round: the R188 row + folder count 43→**44**; prior status R187 — the continuation detail-perfection
 > round: the R187 row + folder count 42→**43**; prior status R186 — the all-surface detail-perfection
 > round: the R186 row + folder count 41→**42**; prior status R185 — the ponytail full-power lean
@@ -19,7 +20,7 @@
 
 ## The round index
 
-**44 folders covering the R142→R188 span** (R155/R159/R180 have no
+**45 folders covering the R142→R191 span** (R155/R159/R180 have no
 folder — see the gaps section; R177–R179's docs commits never touched
 this index, their rows added by R183). Newest first, matching the CHANGELOG's
 order; each row links the round's primary record and names the CHANGELOG entry
@@ -27,6 +28,7 @@ order; each row links the round's primary record and names the CHANGELOG entry
 
 | Round | Date | Title (from the CHANGELOG entry) | Folder contents (measured shape) |
 |---|---|---|---|
+| R191 | 2026-10-31 | The native Expo application lands (the full mobile mission — the central desk + 7 agent invocations: apps/mobile on Expo SDK 58/RN 0.88/React 19.3 with the full customer surface in Arabic RTL, the native session architecture via Set-Cookie capture + Bearer + Origin, the api-client-native twin closing the re-proven R172 two-instance law after 105 frontend failures, push_tokens V1-M37 + the Telegram native OIDC bridge + the well-known deep-link routes + DELETE /auth/sessions documented; expo-doctor 20/20, mobile 27/27, backend full-suite green incl. +25 new tests, frontend healed to 320/2,913, EAS builds: iOS-sim/Android-dev/Android-prod ✅ with artifact URLs; sentry-expo removed after its sentry-cocoa pod failed EAS's Xcode toolchain; honest owner-action list: on-device runtime, Firebase native config, fingerprints, store accounts) | [`round-close.md`](./R191/round-close.md) |
 | R188 | 2026-10-26 | The rotated-lenses perfection round (6-squad audit + 8-squad fix wave — 14 agent invocations + the central desk: 6 read-only audit squads on ROTATED lenses — the seeds/deferrals ledger, React runtime correctness, backend data-integrity, the NEW Arabic-copy linguistics lens, suite reliability, config/CI parity → 39 verified findings (7×P2) → 8 fix squads on disjoint scopes (2 deadline-dead, desk-finished); the P2 highlights: the out-of-tx referral_events insert (no self-heal half-referral), «أصدقاءك» ×5, the frozen «N وحدة» low-stock alerts, the 17-site frozen-count JSX long tail, the bulk-confirm pronoun agreement, the 100 ms wall-clock CI-flake pin, the CI filter omitting the gate-defining files; +45 tests → combined 5,747; the prettier format gate landed in CI after a repo-wide reformat; the R187 rotation verified closed) | [`round-close.md`](./R188/round-close.md) |
 | R187 | 2026-10-25 | The continuation detail-perfection round (12-squad audit + 9-squad fix wave — 21 agent invocations + the central desk: 12 read-only audit squads incl. TWO NEW LENSES — the cross-layer contract chain and the test-quality lens → 91 verified findings (16×P2) → 9 fix squads on disjoint scopes; the P2 highlights: the rec-rail flash-sale price, the refund's never-refreshed wallet surfaces, the last unbounded auth fetches, the viewport keyboard-fix strip on admin boots, the referrals «0 نقطة» confirm, the alerts meta covering 6/11 types, POST /orders' undocumented 503, the crypto legacy-hash pin that wasn't, README's derived-balance falsehood, the R186 commit overclaims repaired with entry #28; +142 tests → combined 5,702) | [`round-close.md`](./R187/round-close.md) |
 | R186 | 2026-10-24 | The all-surface detail-perfection round (the multi-agent audit + fix wave — 20 agent invocations: 10 audit squads → 76 verified findings → 10 fix squads; the nine P2s incl. the TOTP 500+lockout bypass, the 2FA QR dead-end, the orders-CSV escaper gap, the coupon-admin 401 session-teardown, the Redis-adapter crash-loop, the two GA4-class silent-failure twins; +96 pinning tests → combined 5,560; the study guide re-verified ~150 claims) | [`round-close.md`](./R186/round-close.md) |

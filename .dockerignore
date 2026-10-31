@@ -68,3 +68,11 @@ specs
 scripts/r175-product-art
 scripts/r176-real-art
 scripts/r178-transparent-art
+
+# R191 (mobile): Expo local state + generated native folders never enter the
+# production build context (the deps stage filters @workspace/mobile out
+# entirely; this keeps the context transfer lean).
+**/.expo
+apps/mobile/ios
+apps/mobile/android
+apps/mobile/.eas

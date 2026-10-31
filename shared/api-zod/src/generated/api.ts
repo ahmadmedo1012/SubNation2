@@ -87,6 +87,19 @@ export const ListSessionsResponse = zod.object({
 });
 
 /**
+ * Ownership-scoped hard delete of one session row (the mobile app's per-device logout swaps its temporary wrapper for this contract). A non-existent or non-owned session id answers 404 — never a silent success (the honest-revocation discipline of POST /notifications/{id}/read's 404 arm).
+ * @summary Revoke one of the caller's sessions (log out a single device)
+ */
+export const DeleteSessionParams = zod.object({
+  id: zod.coerce.string().describe("The session row id (UserSession.id)."),
+});
+
+export const DeleteSessionResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
  * @summary Logout current user
  */
 export const LogoutResponse = zod.object({
@@ -295,7 +308,7 @@ export const AuthTelegramCallbackQueryParams = zod.object({
 export const AuthTelegramCallbackResponse = zod.void();
 
 /**
- * Issues a single-use state/PKCE verifier/nonce (server-side store, 10-minute TTL) and 302s the browser to https://oauth.telegram.org/auth with scope `openid profile` — NO phone scope (registration is phone-free by design) and no telegram:bot_access. Unconfigured OIDC credentials redirect to /login?error=provider_disabled.
+ * Issues a single-use state/PKCE verifier/nonce (server-side store, 10-minute TTL) and 302s the browser to https://oauth.telegram.org/auth with scope `openid profile` — NO phone scope (registration is phone-free by design) and no telegram:bot_access. Unconfigured OIDC credentials redirect to /login?error=provider_disabled. R191 (native bridge): `?native=1` flags a NATIVE-APP flow — the flag is bound into the server-held state and the callback then delivers the minted session to the app's own URL scheme instead of the web redirect.
  * @summary R154 — start the modern Telegram Login OIDC flow (Authorization Code + PKCE)
  */
 export const AuthTelegramOidcLoginQueryParams = zod.object({
@@ -307,12 +320,18 @@ export const AuthTelegramOidcLoginQueryParams = zod.object({
     .string()
     .optional()
     .describe("Referral code captured at flow start; bound into the server-side state."),
+  native: zod
+    .enum(["1", "true"])
+    .optional()
+    .describe(
+      "R191: present (=1 or true) when the NATIVE app starts the flow — the state records it and the callback 302s to subnation://auth/callback#token=… (the app's own scheme) on success. Absent = the ordinary web flow.",
+    ),
 });
 
 export const AuthTelegramOidcLoginResponse = zod.void();
 
 /**
- * Consumes the single-use state, exchanges the authorization code with the server-held PKCE verifier, validates the RS256 ID token against the official JWKS (issuer, audience, expiry, issued-at, nonce), and mints the SAME session cookie the legacy flows use — the verified classic `id` claim links to the existing users.telegram_id account (never `sub`, which is a different internal identifier). No token in the redirect URL.
+ * Consumes the single-use state, exchanges the authorization code with the server-held PKCE verifier, validates the RS256 ID token against the official JWKS (issuer, audience, expiry, issued-at, nonce), and mints the SAME session cookie the legacy flows use — the verified classic `id` claim links to the existing users.telegram_id account (never `sub`, which is a different internal identifier). No token in the redirect URL. R191 (native bridge): when the flow was started with ?native=1 (the flag rode the SAME single-use state), success 302s to subnation://auth/callback#token=<jwt> instead — the app's own URL scheme (OS-routed to the installed app, no web page involved); the state stays single-use + 10-minute TTL + PKCE-verified, and the login lands in the same audit path as web logins.
  * @summary R154 — complete the Telegram Login OIDC flow
  */
 export const AuthTelegramOidcCallbackQueryParams = zod.object({
@@ -1814,6 +1833,87 @@ export const MarkNotificationReadParams = zod.object({
 });
 
 export const MarkNotificationReadResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * UPSERT on the token's natural key: a device that re-registers
+ * after re-login TRANSFERS ownership (the row's user_id is
+ * overwritten), refreshes the platform/device_label, and UN-revokes
+ * a previously soft-revoked registration. 20 requests / 15 min / IP
+ * (device-registration intent limiter). The token format is
+ * validated server-side (must start with `ExponentPushToken[`,
+ * ≤255 chars — the Expo SDK's issued shape).
+ *
+ * CSRF: the top-level gate applies — a POST under /api, so non-browser
+ * clients (the native app) must send a browser-like Origin header.
+ * @summary Register (or re-register) this device's Expo push token
+ */
+export const registerPushTokenBodyExpoPushTokenMax = 255;
+
+export const registerPushTokenBodyDeviceLabelMax = 255;
+
+export const RegisterPushTokenBody = zod.object({
+  expo_push_token: zod
+    .string()
+    .max(registerPushTokenBodyExpoPushTokenMax)
+    .describe("The Expo SDK-issued device token (ExponentPushToken[...])."),
+  platform: zod.enum(["android", "ios"]),
+  device_label: zod
+    .string()
+    .max(registerPushTokenBodyDeviceLabelMax)
+    .optional()
+    .describe('Optional caller-provided device label (e.g. "iPhone 15 of Ahmed").'),
+});
+
+export const RegisterPushTokenResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * The sessions/device screen's list — ACTIVE registrations only
+ * (soft-revoked rows are audit history, not a device list), newest
+ * last-seen first, capped at 200 (a user with more LIVE devices has
+ * a bug, not a device list). Cache-Control: no-store (the
+ * notifications-surface family rule).
+ * @summary List the caller's ACTIVE push-token registrations
+ */
+export const ListPushTokensResponse = zod.object({
+  push_tokens: zod
+    .array(
+      zod.object({
+        id: zod.string().describe("UUID registration id."),
+        platform: zod.enum(["android", "ios"]),
+        device_label: zod.string().nullish(),
+        last_seen_at: zod.string().describe("Last registration/heartbeat timestamp (ISO)."),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * Sets revoked_at (the row stays for audit; the token stops receiving
+ * pushes). Ownership-scoped: a token owned by another user answers
+ * the honest 404 — never a silent success (the audit-§5 discipline
+ * of POST /notifications/{id}/read's 404 arm).
+ *
+ * CSRF: the top-level gate applies — a DELETE under /api, so
+ * non-browser clients (the native app) must send a browser-like
+ * Origin header.
+ * @summary Soft-revoke one of the caller's push tokens (device logout)
+ */
+export const unregisterPushTokenBodyExpoPushTokenMax = 255;
+
+export const UnregisterPushTokenBody = zod.object({
+  expo_push_token: zod
+    .string()
+    .max(unregisterPushTokenBodyExpoPushTokenMax)
+    .describe("The exact token the device previously registered."),
+});
+
+export const UnregisterPushTokenResponse = zod.object({
   success: zod.boolean(),
   message: zod.string().optional(),
 });

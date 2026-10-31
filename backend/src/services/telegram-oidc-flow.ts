@@ -92,7 +92,14 @@ export interface TelegramOidcClientConfig {
 }
 
 export type TelegramOidcFlowResult =
-  | { ok: true; token: string; isNewUser: boolean; redirect: string | null }
+  | {
+      ok: true;
+      token: string;
+      isNewUser: boolean;
+      redirect: string | null;
+      native?: true;
+      appNonce?: string;
+    }
   | { ok: false; status: number; reason: string; error: string };
 
 /** Resolved `auth.telegram` settings with OIDC credentials present. */
@@ -157,11 +164,33 @@ export async function startTelegramOidcFlow(input: {
   originHeader: string | undefined;
   redirect: string | null;
   referralCode: string | null;
-}): Promise<TelegramOidcStart | { error: "provider_disabled" | "misconfigured_origin" }> {
+  /** R191: the native app started this flow (?native=1) — the callback
+   * redirects the minted session to the app's own URL scheme. Optional
+   * so the web callers (and the pinned tests) keep their shape. */
+  native?: boolean;
+  /** R192 (security, F-1): the app-instance nonce the native client
+   * minted for THIS flow (?app_nonce= on the login hop). REQUIRED when
+   * native=true — the callback echoes it in the redirect fragment so
+   * the app can reject injected callbacks. Ignored on web flows. */
+  appNonce?: string | null;
+}): Promise<
+  | TelegramOidcStart
+  | { error: "provider_disabled" | "misconfigured_origin" | "native_nonce_required" }
+> {
   const cfg = await resolveOidcConfig();
   if (!cfg) return { error: "provider_disabled" };
   const redirectUri = resolveOidcCallbackUrl(input.originHeader);
   if (!redirectUri) return { error: "misconfigured_origin" };
+
+  // R192 (security, F-1): native flows MUST carry an app-instance nonce.
+  // Without it, any web page could forge subnation://auth/callback#token=
+  // deep links and silently substitute the victim's session (login-CSRF
+  // on the native bridge). Shape: base64url, 16-128 chars — generous
+  // around the 32-char value the app mints (24 random bytes).
+  const appNonce = typeof input.appNonce === "string" ? input.appNonce.trim() : "";
+  if (input.native && !/^[A-Za-z0-9_-]{16,128}$/.test(appNonce)) {
+    return { error: "native_nonce_required" };
+  }
 
   const state = randomToken();
   const nonce = randomToken();
@@ -171,6 +200,8 @@ export async function startTelegramOidcFlow(input: {
     nonce,
     redirect: sanitizeInternalPath(input.redirect),
     referralCode: input.referralCode ? input.referralCode.trim().toUpperCase().slice(0, 16) : null,
+    native: input.native === true,
+    appNonce: input.native === true ? appNonce : null,
     createdAt: Date.now(),
   };
   await storeTelegramOidcState(state, value);
@@ -694,7 +725,21 @@ export async function completeTelegramOidcLogin(input: {
     );
   });
 
-  return { ok: true, token, isNewUser, redirect: stored.redirect };
+  return {
+    ok: true,
+    token,
+    isNewUser,
+    redirect: stored.redirect,
+    // R191: the native flag rides the single-use state — only the flow
+    // the app itself started gets the app-scheme redirect.
+    ...(stored.native ? { native: true as const } : {}),
+    // R192 (security, F-1): echo the app-instance nonce in the redirect
+    // fragment so the native client can bind the token to the flow IT
+    // started (stored only on native flows — see startTelegramOidcFlow).
+    ...(stored.native && typeof stored.appNonce === "string" && stored.appNonce
+      ? { appNonce: stored.appNonce }
+      : {}),
+  };
 }
 
 // R166-B6: `isTelegramOidcConfigured` (a resolveOidcConfig() !== null probe

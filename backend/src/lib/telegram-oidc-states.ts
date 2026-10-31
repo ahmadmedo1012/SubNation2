@@ -39,6 +39,23 @@ export interface TelegramOidcStateValue {
   redirect: string | null;
   /** Referral code captured at flow start (uppercase, ≤16). */
   referralCode: string | null;
+  /**
+   * R191 (backend mobile contracts): the flow was started by the NATIVE
+   * app (?native=1) — the callback must hand the minted session to the
+   * app's own URL scheme instead of the web redirect. Absent/false = the
+   * ordinary web flow.
+   */
+  native?: boolean;
+  /**
+   * R192 (security, F-1): the app-instance nonce the native client minted
+   * at flow start (?app_nonce= on the login hop). The callback echoes it
+   * in the redirect fragment so the app can bind the returned token to a
+   * flow THIS app instance started — closing the deep-link token-injection
+   * hole (login-CSRF: a forged subnation://auth/callback#token= from a
+   * malicious site must never replace a stored session). Required for
+   * native flows; null on web flows.
+   */
+  appNonce?: string | null;
   /** Creation epoch ms (fallback-store expiry + telemetry). */
   createdAt: number;
 }
@@ -137,6 +154,8 @@ function parseStateValue(raw: string): TelegramOidcStateValue | null {
       nonce: parsed.nonce,
       redirect: typeof parsed.redirect === "string" ? parsed.redirect : null,
       referralCode: typeof parsed.referralCode === "string" ? parsed.referralCode : null,
+      // R191: pre-native Redis entries (mid-rollout) carry no flag → web.
+      native: parsed.native === true,
       createdAt: parsed.createdAt,
     };
   } catch {

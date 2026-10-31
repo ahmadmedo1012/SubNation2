@@ -61,6 +61,7 @@ import {
   applyWalletLedgerTypeIndexDropStage,
 } from "./migrate/stages/03-domain-org-r135-wave";
 import { applyCopilotRemovalStage } from "./migrate/stages/04-copilot-removal-r181";
+import { applyPushTokensStage } from "./migrate/stages/05-push-tokens-r191";
 
 // ── r110 (109-e P2-1): constraint-skip tracking ────────────────────────────
 //
@@ -1938,6 +1939,14 @@ export async function runMigrations() {
     // See applyCopilotRemovalStage docs.
     await applyCopilotRemovalStage();
 
+    // ── V1-M37 (R191, backend mobile contracts): push_tokens — the ──
+    // ── Expo push-token registrations (one row per device; natural key ──
+    // ── expo_push_token; soft revoke on logout). Probe-gated CREATE ──
+    // ── (V1-M13 idiom) + named FK/index — names match the drizzle ──
+    // ── mirror (chain 0028) so runtime-built and chain-built databases ──
+    // ── converge. See applyPushTokensStage docs.
+    await applyPushTokensStage();
+
     // R146-F5: moved from after the seed blocks — V1-M9..M35 (money
     // constraints, points ledger, index waves) still executed below it,
     // so an operator tailing a slow deploy read "completed" mid-run.
@@ -2004,4 +2013,5 @@ export {
   applyWalletLedgerTypeIndexDropStage,
 } from "./migrate/stages/03-domain-org-r135-wave";
 export { applyCopilotRemovalStage } from "./migrate/stages/04-copilot-removal-r181";
+export { applyPushTokensStage } from "./migrate/stages/05-push-tokens-r191";
 // R144-B2-GEN:END re-exports

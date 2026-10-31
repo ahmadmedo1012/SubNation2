@@ -163,6 +163,7 @@ import type {
   ListOrdersParams,
   ListProductsParams,
   ListPublicAuthProviders200,
+  ListPushTokens200,
   ListReferralsParams,
   ListSessions200,
   ListTopupsParams,
@@ -178,6 +179,7 @@ import type {
   ProductRecommendation,
   RecomputeResult,
   ReferralEventItem,
+  RegisterPushTokenBody,
   ReplySupportTicketBody,
   StartWhatsappOtp200,
   StartWhatsappOtp503,
@@ -191,6 +193,7 @@ import type {
   TicketReply,
   Topup,
   TopupLimitErrorResponse,
+  UnregisterPushTokenBody,
   UpdateAdminUserBody,
   UpdateCartItemBody,
   UpdateFlashSaleBody,
@@ -454,6 +457,90 @@ export function useListSessions<
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+export const getDeleteSessionUrl = (id: string) => {
+  return `/api/auth/sessions/${id}`;
+};
+
+/**
+ * Ownership-scoped hard delete of one session row (the mobile app's per-device logout swaps its temporary wrapper for this contract). A non-existent or non-owned session id answers 404 — never a silent success (the honest-revocation discipline of POST /notifications/{id}/read's 404 arm).
+ * @summary Revoke one of the caller's sessions (log out a single device)
+ */
+export const deleteSession = async (
+  id: string,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getDeleteSessionUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteSessionMutationKey = () => ["deleteSession"] as const;
+
+export const getDeleteSessionMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteSession>>,
+    TError,
+    DeleteSessionMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteSession>>,
+  TError,
+  DeleteSessionMutationVariables,
+  TContext
+> => {
+  const mutationKey = getDeleteSessionMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteSession>>,
+    DeleteSessionMutationVariables
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteSession(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteSessionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSession>>>;
+
+export type DeleteSessionMutationError = ErrorType<ErrorResponse>;
+export type DeleteSessionMutationVariables = { id: string };
+
+/**
+ * @summary Revoke one of the caller's sessions (log out a single device)
+ */
+export const useDeleteSession = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof deleteSession>>,
+      TError,
+      DeleteSessionMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof deleteSession>>,
+  TError,
+  DeleteSessionMutationVariables,
+  TContext
+> => {
+  return useMutation(getDeleteSessionMutationOptions(options), queryClient);
+};
 
 export const getLogoutUrl = () => {
   return `/api/auth/logout`;
@@ -1338,7 +1425,7 @@ export const getAuthTelegramOidcLoginUrl = (params?: AuthTelegramOidcLoginParams
 };
 
 /**
- * Issues a single-use state/PKCE verifier/nonce (server-side store, 10-minute TTL) and 302s the browser to https://oauth.telegram.org/auth with scope `openid profile` — NO phone scope (registration is phone-free by design) and no telegram:bot_access. Unconfigured OIDC credentials redirect to /login?error=provider_disabled.
+ * Issues a single-use state/PKCE verifier/nonce (server-side store, 10-minute TTL) and 302s the browser to https://oauth.telegram.org/auth with scope `openid profile` — NO phone scope (registration is phone-free by design) and no telegram:bot_access. Unconfigured OIDC credentials redirect to /login?error=provider_disabled. R191 (native bridge): `?native=1` flags a NATIVE-APP flow — the flag is bound into the server-held state and the callback then delivers the minted session to the app's own URL scheme instead of the web redirect.
  * @summary R154 — start the modern Telegram Login OIDC flow (Authorization Code + PKCE)
  */
 export const authTelegramOidcLogin = async (
@@ -1484,7 +1571,7 @@ export const getAuthTelegramOidcCallbackUrl = (params?: AuthTelegramOidcCallback
 };
 
 /**
- * Consumes the single-use state, exchanges the authorization code with the server-held PKCE verifier, validates the RS256 ID token against the official JWKS (issuer, audience, expiry, issued-at, nonce), and mints the SAME session cookie the legacy flows use — the verified classic `id` claim links to the existing users.telegram_id account (never `sub`, which is a different internal identifier). No token in the redirect URL.
+ * Consumes the single-use state, exchanges the authorization code with the server-held PKCE verifier, validates the RS256 ID token against the official JWKS (issuer, audience, expiry, issued-at, nonce), and mints the SAME session cookie the legacy flows use — the verified classic `id` claim links to the existing users.telegram_id account (never `sub`, which is a different internal identifier). No token in the redirect URL. R191 (native bridge): when the flow was started with ?native=1 (the flag rode the SAME single-use state), success 302s to subnation://auth/callback#token=<jwt> instead — the app's own URL scheme (OS-routed to the installed app, no web page involved); the state stays single-use + 10-minute TTL + PKCE-verified, and the login lands in the same audit path as web logins.
  * @summary R154 — complete the Telegram Login OIDC flow
  */
 export const authTelegramOidcCallback = async (
@@ -5808,6 +5895,354 @@ export const useMarkNotificationRead = <TError = ErrorType<ErrorResponse>, TCont
   TContext
 > => {
   return useMutation(getMarkNotificationReadMutationOptions(options), queryClient);
+};
+
+export const getRegisterPushTokenUrl = () => {
+  return `/api/notifications/push-tokens`;
+};
+
+/**
+ * UPSERT on the token's natural key: a device that re-registers
+ * after re-login TRANSFERS ownership (the row's user_id is
+ * overwritten), refreshes the platform/device_label, and UN-revokes
+ * a previously soft-revoked registration. 20 requests / 15 min / IP
+ * (device-registration intent limiter). The token format is
+ * validated server-side (must start with `ExponentPushToken[`,
+ * ≤255 chars — the Expo SDK's issued shape).
+ *
+ * CSRF: the top-level gate applies — a POST under /api, so non-browser
+ * clients (the native app) must send a browser-like Origin header.
+ * @summary Register (or re-register) this device's Expo push token
+ */
+export const registerPushToken = async (
+  registerPushTokenBody: RegisterPushTokenBody,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<SuccessResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(
+          h as Iterable<Iterable<string>>,
+          (entry) => Array.from(entry) as [string, string],
+        ),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+  return customFetch<SuccessResponse>(getRegisterPushTokenUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(registerPushTokenBody),
+  });
+};
+
+export const getRegisterPushTokenMutationKey = () => ["registerPushToken"] as const;
+
+export const getRegisterPushTokenMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof registerPushToken>>,
+    TError,
+    RegisterPushTokenMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof registerPushToken>>,
+  TError,
+  RegisterPushTokenMutationVariables,
+  TContext
+> => {
+  const mutationKey = getRegisterPushTokenMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof registerPushToken>>,
+    RegisterPushTokenMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return registerPushToken(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RegisterPushTokenMutationResult = NonNullable<
+  Awaited<ReturnType<typeof registerPushToken>>
+>;
+export type RegisterPushTokenMutationBody = BodyType<RegisterPushTokenBody>;
+export type RegisterPushTokenMutationError = ErrorType<ErrorResponse>;
+export type RegisterPushTokenMutationVariables = { data: BodyType<RegisterPushTokenBody> };
+
+/**
+ * @summary Register (or re-register) this device's Expo push token
+ */
+export const useRegisterPushToken = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof registerPushToken>>,
+      TError,
+      RegisterPushTokenMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof registerPushToken>>,
+  TError,
+  RegisterPushTokenMutationVariables,
+  TContext
+> => {
+  return useMutation(getRegisterPushTokenMutationOptions(options), queryClient);
+};
+
+export const getListPushTokensUrl = () => {
+  return `/api/notifications/push-tokens`;
+};
+
+/**
+ * The sessions/device screen's list — ACTIVE registrations only
+ * (soft-revoked rows are audit history, not a device list), newest
+ * last-seen first, capped at 200 (a user with more LIVE devices has
+ * a bug, not a device list). Cache-Control: no-store (the
+ * notifications-surface family rule).
+ * @summary List the caller's ACTIVE push-token registrations
+ */
+export const listPushTokens = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<ListPushTokens200> => {
+  return customFetch<ListPushTokens200>(getListPushTokensUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPushTokensQueryKey = () => {
+  return [`/api/notifications/push-tokens`] as const;
+};
+
+export const getListPushTokensQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPushTokens>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listPushTokens>>, TError, TData>>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPushTokensQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listPushTokens>>> = ({ signal }) =>
+    listPushTokens({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPushTokens>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListPushTokensQueryResult = NonNullable<Awaited<ReturnType<typeof listPushTokens>>>;
+export type ListPushTokensQueryError = ErrorType<ErrorResponse>;
+
+export function useListPushTokens<
+  TData = Awaited<ReturnType<typeof listPushTokens>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof listPushTokens>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPushTokens>>,
+          TError,
+          Awaited<ReturnType<typeof listPushTokens>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListPushTokens<
+  TData = Awaited<ReturnType<typeof listPushTokens>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listPushTokens>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPushTokens>>,
+          TError,
+          Awaited<ReturnType<typeof listPushTokens>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListPushTokens<
+  TData = Awaited<ReturnType<typeof listPushTokens>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listPushTokens>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List the caller's ACTIVE push-token registrations
+ */
+
+export function useListPushTokens<
+  TData = Awaited<ReturnType<typeof listPushTokens>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listPushTokens>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListPushTokensQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getUnregisterPushTokenUrl = () => {
+  return `/api/notifications/push-tokens`;
+};
+
+/**
+ * Sets revoked_at (the row stays for audit; the token stops receiving
+ * pushes). Ownership-scoped: a token owned by another user answers
+ * the honest 404 — never a silent success (the audit-§5 discipline
+ * of POST /notifications/{id}/read's 404 arm).
+ *
+ * CSRF: the top-level gate applies — a DELETE under /api, so
+ * non-browser clients (the native app) must send a browser-like
+ * Origin header.
+ * @summary Soft-revoke one of the caller's push tokens (device logout)
+ */
+export const unregisterPushToken = async (
+  unregisterPushTokenBody: UnregisterPushTokenBody,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<SuccessResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(
+          h as Iterable<Iterable<string>>,
+          (entry) => Array.from(entry) as [string, string],
+        ),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+  return customFetch<SuccessResponse>(getUnregisterPushTokenUrl(), {
+    ...options,
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(unregisterPushTokenBody),
+  });
+};
+
+export const getUnregisterPushTokenMutationKey = () => ["unregisterPushToken"] as const;
+
+export const getUnregisterPushTokenMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof unregisterPushToken>>,
+    TError,
+    UnregisterPushTokenMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof unregisterPushToken>>,
+  TError,
+  UnregisterPushTokenMutationVariables,
+  TContext
+> => {
+  const mutationKey = getUnregisterPushTokenMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof unregisterPushToken>>,
+    UnregisterPushTokenMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return unregisterPushToken(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UnregisterPushTokenMutationResult = NonNullable<
+  Awaited<ReturnType<typeof unregisterPushToken>>
+>;
+export type UnregisterPushTokenMutationBody = BodyType<UnregisterPushTokenBody>;
+export type UnregisterPushTokenMutationError = ErrorType<ErrorResponse>;
+export type UnregisterPushTokenMutationVariables = { data: BodyType<UnregisterPushTokenBody> };
+
+/**
+ * @summary Soft-revoke one of the caller's push tokens (device logout)
+ */
+export const useUnregisterPushToken = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof unregisterPushToken>>,
+      TError,
+      UnregisterPushTokenMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof unregisterPushToken>>,
+  TError,
+  UnregisterPushTokenMutationVariables,
+  TContext
+> => {
+  return useMutation(getUnregisterPushTokenMutationOptions(options), queryClient);
 };
 
 export const getGetAdminStatsUrl = () => {

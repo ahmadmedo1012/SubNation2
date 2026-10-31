@@ -819,6 +819,21 @@ accounts can press them.
   the census is `docs/engineering/R162/catalog-content-review.md`).
   `docs/engineering/R163/round-close.md` §11.3 +
   `docs/engineering/R165/round-close.md` §9.6.
+- **R191 — deep-link association credentials (owner, minutes each):** the
+  backend now serves `/.well-known/assetlinks.json` (Android App Links) and
+  `/.well-known/apple-app-site-association` (iOS Universal Links). The EAS
+  keystore's REAL SHA256 is already in `assetlinks.json` (extracted from the
+  signed artifacts — the dev APK and the production AAB carry the same
+  signer), so App Links verification WORKS for sideloaded dev/preview
+  installs as soon as the backend deploys. What remains:
+  1. after creating the Play Console app entry (`ly.subnation.app`), copy
+     the app-signing key's SHA256 from Play Console (Release → Setup → App
+     signing) and APPEND it to the `sha256_cert_fingerprints` array in
+     `backend/src/routes/well-known.ts` (keep the EAS fingerprint — dev
+     builds keep verifying against it), then redeploy;
+  2. once the Apple Developer Program Team ID is known, replace `TEAMID` in
+     `TEAMID.ly.subnation.app` in the same file, then redeploy.
+  (Source of truth: the module doc in `backend/src/routes/well-known.ts`.)
 
 ## 15. Backups & restore drills (pointer)
 

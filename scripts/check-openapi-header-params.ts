@@ -67,6 +67,11 @@ const openApiPath =
   process.env.CHECK_HEADER_PARAMS_YAML ?? path.join(repoRoot, "shared", "api-spec", "openapi.yaml");
 const zodClientPath = path.join(repoRoot, "shared", "api-zod", "src", "generated", "api.ts");
 const reactClientDir = path.join(repoRoot, "shared", "api-client-react", "src", "generated");
+// R191 (review R7-c): the native twin is generated from the SAME spec
+// with the SAME orval options — scanning both doubles the gate's
+// surface (a twin-specific emission change now reads as dropped, the
+// safe direction) at zero new maintenance.
+const nativeClientDir = path.join(repoRoot, "shared", "api-client-native", "src", "generated");
 
 /** Repo-relative display path for messages (absolute for /tmp overrides). */
 function displayPath(p: string): string {
@@ -201,7 +206,9 @@ const KNOWN_DROPPED: ReadonlyArray<{ method: string; path: string; header: strin
   { method: "post", path: "/loyalty/convert-points", header: "Idempotency-Key" },
 ];
 
-const reactClientFiles = ["api.ts", "api.schemas.ts"].map((f) => path.join(reactClientDir, f));
+const reactClientFiles = [reactClientDir, nativeClientDir].flatMap((dir) =>
+  ["api.ts", "api.schemas.ts"].map((f) => path.join(dir, f)),
+);
 
 /**
  * Does the generated react client carry `header` as a typed param?

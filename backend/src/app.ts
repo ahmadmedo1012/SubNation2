@@ -21,6 +21,7 @@ import {
   couponValidateLimiter,
   loyaltyConvertPointsLimiter,
   ordersCreateLimiter,
+  pushTokenRegisterLimiter,
   userLimiter,
   walletTopupCreateLimiter,
   whatsappStartAuthLimiter,
@@ -33,6 +34,7 @@ import { instrumentationIsolation } from "./middlewares/instrumentation-isolatio
 import { metricsMiddleware } from "./middlewares/metrics";
 import router from "./routes";
 import { seoRouter } from "./routes/seo";
+import { wellKnownRouter } from "./routes/well-known";
 // R136 (app.ts decomposition): lib/csrf is imported AFTER the route tree so
 // its SEC-92-01 boot assertion evaluates with the whole route tree already
 // loaded — the exact module-eval order of the pre-R136 app.ts, where the
@@ -292,6 +294,10 @@ app.use("/api/coupons/validate", couponValidateLimiter);
 app.use("/api/orders", ordersCreateLimiter);
 app.use("/api/wallet/topups", walletTopupCreateLimiter);
 app.use("/api/loyalty/convert-points", loyaltyConvertPointsLimiter);
+// R191 (backend mobile contracts): POST /api/notifications/push-tokens —
+// device-registration intent, 20/15min/IP (POST-only; the mount contract
+// above). Mounted BEFORE the generic /api limiters, same as the money guards.
+app.use("/api/notifications/push-tokens", pushTokenRegisterLimiter);
 app.use("/api", apiLimiter);
 app.use("/api", userLimiter);
 app.use("/api", router);
@@ -313,6 +319,14 @@ app.use("/api", (_req, res) => {
 // /robots.txt and /sitemap.xml live at the app root, not under /api, so search
 // engines crawling the apex find them where they expect.
 app.use(seoRouter);
+
+// ── R191 (backend mobile contracts): /.well-known deep-link associations ────
+// Android App Links (assetlinks.json) + iOS Universal Links
+// (apple-app-site-association, NO .json suffix) — machine-facing static JSON
+// the OS link verifiers fetch at the apex. Mounted next to seoRouter:
+// root-level, public, no CSRF/auth (GET static JSON — the Origin gate is
+// POST/PUT/DELETE/PATCH only and these carry no session surface anyway).
+app.use(wellKnownRouter);
 
 // R176 (SEO): /category/productivity is retired but still records GSC
 // impressions (24 in the last 28 days; 122 / 9 clicks in the prior window).

@@ -120,6 +120,43 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /auth/sessions/{id}:
+    delete:
+      operationId: deleteSession
+      tags: [auth]
+      summary: Revoke one of the caller's sessions (log out a single device)
+      description: >-
+        Ownership-scoped hard delete of one session row (the mobile app's
+        per-device logout swaps its temporary wrapper for this contract).
+        A non-existent or non-owned session id answers 404 — never a silent
+        success (the honest-revocation discipline of POST
+        /notifications/{id}/read's 404 arm).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The session row id (UserSession.id).
+      responses:
+        "200":
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Not authenticated (requireUser guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Session not found (or not owned by the caller)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /auth/logout:
     post:
       operationId: logout
@@ -549,7 +586,10 @@ paths:
         https://oauth.telegram.org/auth with scope `openid profile` —
         NO phone scope (registration is phone-free by design) and no
         telegram:bot_access. Unconfigured OIDC credentials redirect to
-        /login?error=provider_disabled.
+        /login?error=provider_disabled. R191 (native bridge): `?native=1`
+        flags a NATIVE-APP flow — the flag is bound into the server-held
+        state and the callback then delivers the minted session to the
+        app's own URL scheme instead of the web redirect.
       parameters:
         - name: redirect
           in: query
@@ -563,6 +603,17 @@ paths:
           schema:
             type: string
           description: Referral code captured at flow start; bound into the server-side state.
+        - name: native
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["1", "true"]
+          description: >-
+            R191: present (=1 or true) when the NATIVE app starts the flow
+            — the state records it and the callback 302s to
+            subnation://auth/callback#token=… (the app's own scheme) on
+            success. Absent = the ordinary web flow.
       responses:
         "302":
           description: Redirect to oauth.telegram.org/auth (or /login?error=... when not configured).
@@ -581,6 +632,13 @@ paths:
         flows use — the verified classic `id` claim links to the
         existing users.telegram_id account (never `sub`, which is a
         different internal identifier). No token in the redirect URL.
+        R191 (native bridge): when the flow was started with
+        ?native=1 (the flag rode the SAME single-use state), success
+        302s to subnation://auth/callback#token=<jwt> instead — the
+        app's own URL scheme (OS-routed to the installed app, no web
+        page involved); the state stays single-use + 10-minute TTL +
+        PKCE-verified, and the login lands in the same audit path as
+        web logins.
       parameters:
         - name: code
           in: query
@@ -602,7 +660,10 @@ paths:
           description: Provider-reported error (user cancellation etc.).
       responses:
         "302":
-          description: Success → session cookie set + redirect to the stored path (or /auth/callback); failure → /login?error=oidc_state|oidc_invalid_token|cancelled|...
+          description: >-
+            Success → session cookie set + redirect to the stored path (or
+            /auth/callback); NATIVE flows → subnation://auth/callback#token=…;
+            failure → /login?error=oidc_state|oidc_invalid_token|cancelled|...
 
   /auth/firebase/session:
     post:
@@ -2240,6 +2301,151 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Notification not found (or not owned by the caller)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Notifications: Expo push-token registration (R191 backend mobile ────────
+  # contracts) — the customer device-registration surface. One row per
+  # DEVICE (expo_push_token is the natural key): re-registration is an
+  # ownership-transfer upsert, logout is a soft revoke. The backend sends
+  # best-effort pushes on the same key events that write in-app
+  # notifications (order status change, topup approval/rejection).
+  /notifications/push-tokens:
+    post:
+      operationId: registerPushToken
+      tags: [notifications]
+      summary: Register (or re-register) this device's Expo push token
+      description: |
+        UPSERT on the token's natural key: a device that re-registers
+        after re-login TRANSFERS ownership (the row's user_id is
+        overwritten), refreshes the platform/device_label, and UN-revokes
+        a previously soft-revoked registration. 20 requests / 15 min / IP
+        (device-registration intent limiter). The token format is
+        validated server-side (must start with `ExponentPushToken[`,
+        ≤255 chars — the Expo SDK's issued shape).
+
+        CSRF: the top-level gate applies — a POST under /api, so non-browser
+        clients (the native app) must send a browser-like Origin header.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expo_push_token, platform]
+              properties:
+                expo_push_token:
+                  type: string
+                  maxLength: 255
+                  description: The Expo SDK-issued device token (ExponentPushToken[...]).
+                platform:
+                  type: string
+                  enum: [android, ios]
+                device_label:
+                  type: string
+                  maxLength: 255
+                  description: Optional caller-provided device label (e.g. "iPhone 15 of Ahmed").
+      responses:
+        "200":
+          description: Registered (new or upserted)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Invalid body (bad token shape / bad platform enum)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limited (20 registrations / 15 min / IP)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: listPushTokens
+      tags: [notifications]
+      summary: List the caller's ACTIVE push-token registrations
+      description: |
+        The sessions/device screen's list — ACTIVE registrations only
+        (soft-revoked rows are audit history, not a device list), newest
+        last-seen first, capped at 200 (a user with more LIVE devices has
+        a bug, not a device list). Cache-Control: no-store (the
+        notifications-surface family rule).
+      responses:
+        "200":
+          description: Active registrations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  push_tokens:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PushToken"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: unregisterPushToken
+      tags: [notifications]
+      summary: Soft-revoke one of the caller's push tokens (device logout)
+      description: |
+        Sets revoked_at (the row stays for audit; the token stops receiving
+        pushes). Ownership-scoped: a token owned by another user answers
+        the honest 404 — never a silent success (the audit-§5 discipline
+        of POST /notifications/{id}/read's 404 arm).
+
+        CSRF: the top-level gate applies — a DELETE under /api, so
+        non-browser clients (the native app) must send a browser-like
+        Origin header.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expo_push_token]
+              properties:
+                expo_push_token:
+                  type: string
+                  maxLength: 255
+                  description: The exact token the device previously registered.
+      responses:
+        "200":
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Invalid body (bad token shape)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Token not found (or not owned by the caller)
           content:
             application/json:
               schema:
@@ -6467,6 +6673,26 @@ components:
           type: boolean
           description: offset + page length < total.
       required: [notifications, total, page, limit, hasMore]
+
+    # R191 (backend mobile contracts): one ACTIVE push-token registration
+    # — the device list row for GET /notifications/push-tokens. The token
+    # VALUE itself is deliberately NOT part of the DTO (the device knows
+    # its own token; the list only describes the registration).
+    PushToken:
+      type: object
+      properties:
+        id:
+          type: string
+          description: UUID registration id.
+        platform:
+          type: string
+          enum: [android, ios]
+        device_label:
+          type: ["string", "null"]
+        last_seen_at:
+          type: string
+          description: Last registration/heartbeat timestamp (ISO).
+      required: [id, platform, last_seen_at]
 
     # ── Admin ─────────────────────────────────────────────────────────────────
     AdminLoginBody:

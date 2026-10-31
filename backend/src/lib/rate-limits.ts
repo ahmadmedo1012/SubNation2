@@ -288,6 +288,31 @@ export const loyaltyConvertPointsLimiter = createMoneyIntentLimiter(
   "عدد كبير من محاولات تحويل النقاط. حاول مجدداً بعد دقيقة.",
 );
 
+// ── R191 (backend mobile contracts): the push-token registration guard ───────
+//
+// POST /api/notifications/push-tokens writes a device-registration row per
+// call; a scripted client could otherwise mint unbounded rows under the
+// blanket userLimiter (1200/min/user). Legitimate cadence is one
+// registration per app install + rare re-registrations, so 20/15min per IP
+// (the whatsappStartAuthLimiter CGNAT-friendly shape — Libya's mobile
+// carriers share egress IPs) is far above honest usage. Mounted in app.ts
+// path-specific + POST-only, the money-intent limiter mount contract (reads
+// keep riding the generic limiters; DELETE/GET of the same path too).
+export const pushTokenRegisterLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  store: makeRateLimitStore(),
+  skipFailedRequests: false,
+  skipSuccessfulRequests: false,
+  skip: (req) => req.method !== "POST",
+  message: {
+    error: "عدد كبير من محاولات تسجيل الجهاز. حاول مجدداً بعد 15 دقيقة.",
+    code: "RATE_LIMITED",
+  },
+});
+
 // ── R158 (B#6): the support-route per-user limiters ───────────────────────────
 //
 // V3-C5a: ticket-creation spam guard — the global userLimiter (1200/min)

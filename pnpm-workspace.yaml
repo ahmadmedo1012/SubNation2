@@ -28,6 +28,11 @@ packages:
   - backend
   - frontend
   - shared/*
+  # R191: the native Expo app (single root lockfile maintained — mobile's
+  # Expo/RN tree resolves here too; the PRODUCTION Docker image never
+  # installs it: the deps stage filters it out, the runtime stage only
+  # links the @workspace/api-server closure).
+  - apps/mobile
   - scripts
 
 catalog:
@@ -136,10 +141,16 @@ overrides:
   # ── Mission W7 supply-chain floors (2026-10-05, restored here R119) ──
   # protobufjs 7.6.6 (prototype pollution), ws >=8.21 (DoS),
   # @fastify/busboy ^3.2.1 + form-data ^4.0.6 (multipart parsing),
-  # brace-expansion ^2.1.6 (ReDoS), @grpc/grpc-js ^1.14.5.
+  # brace-expansion (ReDoS), @grpc/grpc-js ^1.14.5.
+  # R191: brace-expansion is now VERSION-SCOPED — the unscoped ^2.1.6 floor
+  # forced minimatch@3's v1 chain onto the v2 API (no `expand` export),
+  # which broke @expo/fingerprint (EAS build submission). Both lines stay
+  # on their patched ReDoS floors: v1 → 1.1.12 (the v1 advisory patch),
+  # v2 → ^2.1.6 (unchanged).
   "@fastify/busboy": "^3.2.1"
   "@grpc/grpc-js": "^1.14.5"
-  "brace-expansion": "^2.1.6"
+  "brace-expansion@^1.1.7": "1.1.12"
+  "brace-expansion@^2.1.6": "^2.1.6"
   "form-data": "^4.0.6"
   "protobufjs": "^7.6.1"
   "ws": ">=8.21.0"

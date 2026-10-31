@@ -28,11 +28,13 @@ import { decrypt, isEncrypted } from "../../lib/encryption";
  *      here);
  *   2. the second run is a clean idempotent no-op (boot-resilience's
  *      transient retry re-runs from the top — that path must converge);
- *   3. the end shape matches the lane-L9 boot dry-run (re-measured
- *      after R181's V1-M36 copilot retirement): 38 tables /
- *      29 CHECKs / 39 FKs / 140 indexes (pg_trgm degrades exactly like
- *      ensurePgTrgmExtension does on this engine; R165/V1-M35 raised
- *      139 → 140 with idx_orders_user_group);
+ *   3. the end shape (re-measured after R181's V1-M36 copilot retirement
+ *      AND R191's V1-M37 push_tokens): 39 tables / 30 CHECKs / 36 FKs /
+ *      131 indexes (pg_trgm degrades exactly like ensurePgTrgmExtension
+ *      does on this engine; R191/V1-M37: 38/29/35/128 → +1 table, +1
+ *      CHECK (chk_push_tokens_platform), +1 FK (push_tokens_user_id_
+ *      users_id_fk), +3 indexes (idx_push_tokens_user_id + the
+ *      expo_push_token UNIQUE + the table PK));
  *   4. Stage C applied (users.password_hash gone) and the money guards
  *      the M1–M15 invariants depend on exist.
  */
@@ -144,17 +146,25 @@ describe("R143 (L9-2): the full runMigrations() body boots a fresh database", ()
     },
   );
 
-  it("the documented end shape holds (38 tables / 29 CHECKs / 35 FKs / 128 indexes)", async () => {
+  it("the documented end shape holds (39 tables / 30 CHECKs / 36 FKs / 131 indexes)", async () => {
     const tables = await scalar("SELECT count(*) AS c FROM pg_tables WHERE schemaname = 'public'");
-    expect(tables).toBe(38);
-    expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'c'")).toBe(29);
-    expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'f'")).toBe(35);
+    // R191 (V1-M37): 38 → 39 — push_tokens (the Expo push-token
+    // registrations) joins the boot end shape; boot and chain converge
+    // on the identical count (probe-verified: the table sets are equal).
+    expect(tables).toBe(39);
+    // R191 (V1-M37): 29 → 30 — chk_push_tokens_platform (android|ios).
+    expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'c'")).toBe(30);
+    // R191 (V1-M37): 35 → 36 — push_tokens_user_id_users_id_fk (the
+    // sessions-style CASCADE family, NOT the money RESTRICT family).
+    expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'f'")).toBe(36);
     // R165 (V1-M35): 139 → 140 — idx_orders_user_group (the order-group
     // partial lookup, applyOrdersGroupColumnStage).
     // R181 (V1-M36): 140 → 128 — the three copilot tables leave the boot
     // end shape (12 indexes: 9 explicit + the 3 table PKs).
+    // R191 (V1-M37): 128 → 131 — push_tokens' three: idx_push_tokens_
+    // user_id + the expo_push_token UNIQUE + the table PK.
     expect(await scalar("SELECT count(*) AS c FROM pg_indexes WHERE schemaname = 'public'")).toBe(
-      128,
+      131,
     );
     // R181 (V1-M36): the copilot-exclusive tables are provably absent
     // from a FRESH boot (the retired create block is gone from
@@ -192,9 +202,10 @@ describe("R146 (audit-shared-migrate): parity + encryption-at-rest gates on the 
   it("F2: every schema-TS column exists in the boot-built database, and vice versa (column census)", async () => {
     const tables = Object.entries(schema).filter(([, value]) => is(value, PgTable));
     // Guards the census against a silent is() regression making the loop
-    // vacuous — the schema exports exactly the 38 boot tables, 1:1
-    // (R181: the three copilot tables left both sides together).
-    expect(tables.length).toBe(38);
+    // vacuous — the schema exports exactly the 39 boot tables, 1:1
+    // (R181: the three copilot tables left both sides together; R191:
+    // push_tokens joined both sides together — the four-mirror law).
+    expect(tables.length).toBe(39);
     for (const [exportName, value] of tables) {
       const table = value as PgTable;
       const tableName = getTableConfig(table).name;

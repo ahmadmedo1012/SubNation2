@@ -90,6 +90,11 @@ const KNOWN_UNDOCUMENTED: ReadonlyArray<{ method: string; path: string; category
   { method: "post", path: "/api/cwv", category: "internal" },
   { method: "get", path: "/robots.txt", category: "internal" },
   { method: "get", path: "/sitemap.xml", category: "internal" },
+  // R191 (backend mobile contracts): /.well-known deep-link association
+  // files — machine-facing static JSON fetched by the Android/iOS link
+  // verifiers (the robots.txt/sitemap.xml family, at the apex).
+  { method: "get", path: "/.well-known/assetlinks.json", category: "internal" },
+  { method: "get", path: "/.well-known/apple-app-site-association", category: "internal" },
   // R176 (SEO): retired category URL kept as a 301 to /category/software —
   // crawler-facing redirect, surfaced to the gate by the R186 app-level
   // leaf recording (I-F7).
@@ -113,11 +118,13 @@ const KNOWN_UNDOCUMENTED: ReadonlyArray<{ method: string; path: string; category
   // openapi.yaml this round (the highest-leverage contract gap: WhatsApp is
   // the primary Libyan sign-in) and therefore removed from this list. The
   // remaining entries are secondary session-management surface.)
+  // (R191: delete /api/auth/sessions/{id} was documented in openapi.yaml
+  // (operationId deleteSession) + removed from this list per the
+  // "remove once documented" rule.)
   { method: "post", path: "/api/auth/logout-all-devices", category: "auth-gap" },
   { method: "get", path: "/api/auth/providers/linked", category: "auth-gap" },
   { method: "post", path: "/api/auth/providers/unlink", category: "auth-gap" },
   { method: "post", path: "/api/auth/onboarding/complete", category: "auth-gap" },
-  { method: "delete", path: "/api/auth/sessions/{id}", category: "auth-gap" },
 
   // admin-gap — admin auth/2FA/session lifecycle (B3 B.1)
   { method: "post", path: "/api/admin/login/verify-2fa", category: "admin-gap" },

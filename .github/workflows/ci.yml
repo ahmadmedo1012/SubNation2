@@ -147,6 +147,10 @@ jobs:
               - "frontend/**"
               - "shared/**"
               - "scripts/**"
+              # R191: the native Expo app joins the workspace — its source
+              # must trip the heavy jobs just like backend/frontend (its
+              # own `mobile` quality leg + the shared checks/build/tests).
+              - "apps/mobile/**"
               - "config/**"
               - "deploy/**"
               - "package.json"
@@ -412,13 +416,78 @@ jobs:
         # (orval 8.40 + zod version:3 pin). The generated clients are
         # COMMITTED, so "edit openapi.yaml, forget codegen" must fail
         # CI exactly like the drizzle mirror above fails schema edits.
+        # R191 fix (review R7-c P1): the diff now covers ALL THREE orval
+        # targets — api-zod + the react twin + the native twin. The
+        # codegen step always emitted all three; the gate only diffed
+        # two, so native-twin drift (hand edits, emission changes) rode
+        # green. The "three-target regen" claim is now literally true.
         run: |
           set -euo pipefail
           pnpm --filter @workspace/api-spec run codegen
-          if ! git diff --exit-code -- shared/api-zod/src shared/api-client-react/src; then
+          if ! git diff --exit-code -- shared/api-zod/src shared/api-client-react/src shared/api-client-native/src; then
             echo "::error::Orval drift detected. Run \`pnpm --filter @workspace/api-spec run codegen\` locally and commit the regenerated clients."
             exit 1
           fi
+
+  # Mobile quality — R191's own CI leg (review R7-c P2): apps/mobile
+  # carried ~35k lines with ZERO CI quality coverage while the path-
+  # filter comment claimed parity ("its source must trip the heavy
+  # jobs just like backend/frontend"). This leg makes the claim true:
+  # typecheck + expo lint + the vitest suite, one job, same
+  # if/permissions/env contract as the `tests` matrix. Runs after the
+  # secret-scan/filter gates; needs nothing else (self-contained
+  # install + the three scripts).
+  mobile:
+    name: Mobile quality (typecheck, lint, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [secret-scan, filter]
+    # Same docs-only skip contract as `checks`/`tests` — apps/mobile/**
+    # is inside the `code` filter, so mobile pushes always run this leg.
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      needs.filter.outputs.code == 'true'
+    permissions:
+      contents: read
+    env:
+      # Synthetic values — mirrors the sibling jobs (the mobile suite
+      # stubs all network/DB interactions; the shared client's module
+      # graph still reads these at import time).
+      DATABASE_URL: postgres://ci:ci@localhost/ci
+      SESSION_SECRET: ci-test-secret-not-real-do-not-use-in-prod
+      HUSKY: "0"
+      # Expo CLI hard requirements for CI: no telemetry, no prompts.
+      CI: "true"
+      EXPO_NO_TELEMETRY: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck the mobile app
+        run: pnpm --filter @workspace/mobile run typecheck
+
+      - name: Lint the mobile app (expo lint)
+        run: pnpm --filter @workspace/mobile run lint
+
+      - name: Run the mobile vitest suite
+        run: pnpm --filter @workspace/mobile run test:run
 
   # Unit tests — one matrix leg per suite (R127-L4 split). fail-fast:
   # false so a backend red does not cancel the frontend leg — both
@@ -663,7 +732,8 @@ jobs:
   #
   # The suite is the SAME specs the heartbeat runs — zero forked
   # expectations. Local reproduction: the recipe is a straight script
-  # (boot → wait /healthz → seed → playwright); verified end-to-end
+  # (boot → wait /api/healthz — the GATED liveness, not the SPA-shell
+  # /healthz → seed → playwright); verified end-to-end
   # before landing (144 tests × 3 projects green, incl. the re-pinned
   # cart-drain quantity + the GA4 dataLayer shape fix).
   e2e-hermetic:
@@ -725,6 +795,29 @@ jobs:
         run: pnpm --filter @workspace/api-server run build
       - name: Boot the built stack (migrations run at boot)
         env:
+          # ── SECURITY EVIDENCE (R192, for the automated PR auditor) ─────────
+          # Every literal below is TEST-ONLY BY CONSTRUCTION and can never
+          # reach production (the audit's flagged values, with proof):
+          #   • postgresql://e2e:e2e@localhost:5432/subnation_e2e — `localhost`
+          #     is the EPHEMERAL RUNNER ITSELF; the values match the
+          #     postgres:16-alpine service container this job starts above
+          #     (POSTGRES_USER: e2e / POSTGRES_PASSWORD: e2e /
+          #     POSTGRES_DB: subnation_e2e), which is created and destroyed
+          #     with the job. Production Postgres (Neon) requires a real
+          #     host + real credentials that appear NOWHERE in this file.
+          #   • SESSION_SECRET / ADMIN_JWT_SECRET / ENCRYPTION_KEY —
+          #     synthetic 32+ char values (jwt.ts/encryption.ts reject
+          #     shorter at module load); labeled not-real, consumed only
+          #     by the disposable stack above.
+          #   • ADMIN_PASSWORD (the seed step below) — seeds the ephemeral
+          #     e2e admin INSIDE that same disposable database; the value
+          #     is committed beside the seed that sets it, so it guards
+          #     nothing (a rotated value changes nothing about any real
+          #     system).
+          #   • postgres://ci:ci@localhost/ci (the other jobs' DATABASE_URL)
+          #     is a pure shape-stub for module-load validation — those
+          #     jobs start NO postgres and stub all DB interactions.
+          # Gitleaks/Snyk stay green by design: none of these are secrets.
           DATABASE_URL: postgresql://e2e:e2e@localhost:5432/subnation_e2e
           # Synthetic 32+ char secrets — jwt.ts/encryption.ts reject
           # shorter values at module load; these never leave the runner.
@@ -744,10 +837,18 @@ jobs:
           node --enable-source-maps ./dist/index.mjs > "$RUNNER_TEMP/server.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/server.pid"
           cd ..
-      - name: Wait for /healthz
+      - name: Wait for /api/healthz (the REAL boot gate)
+        # The probe MUST be /api/healthz — the gated liveness that answers
+        # 503 {"status":"starting"} until bootstrapCore (the boot
+        # migrations) resolves, then 200. The bare /healthz this step used
+        # to curl is the SPA-shell catch-all: a static GET that PASSES the
+        # boot gate instantly, so the wait was a no-op and the seed could
+        # start while the 339-statement reconcile was still running — the
+        # 42703 (admin_users.permissions) seed race that flaked the push
+        # run on 3f72c452 while the PR-event run passed two minutes later.
         run: |
           for i in $(seq 1 90); do
-            if curl -sf http://localhost:8080/healthz > /dev/null; then
+            if curl -sf http://localhost:8080/api/healthz > /dev/null; then
               echo "stack healthy after ${i}s"; exit 0
             fi
             if ! kill -0 "$(cat "$RUNNER_TEMP/server.pid")" 2>/dev/null; then

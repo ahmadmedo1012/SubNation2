@@ -136,6 +136,16 @@ Root: `OPERATIONS_RUNBOOK.md` (on-call) · `CHANGELOG.md` (ledger) · `Dockerfil
 
 ---
 
+## Native mobile app (Expo, R191)
+
+The repository also contains **`apps/mobile`** — the native Android/iOS
+SubNation app (Expo SDK 58 / React Native 0.88 / Expo Router), wired to this
+same backend through the shared OpenAPI contract. It shares the root pnpm
+lockfile and CI, but never enters the production Docker image. Docs:
+[`docs/mobile/README.md`](docs/mobile/README.md). The web and the app are
+generated against one spec — API changes still start at
+`shared/api-spec/openapi.yaml` + `pnpm codegen` (both clients regenerate).
+
 ## Local development
 
 - Node.js **22+** and pnpm **10+** (enforced by the workspace)

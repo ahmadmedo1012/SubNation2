@@ -1025,6 +1025,23 @@ export interface NotificationsPage {
   hasMore: boolean;
 }
 
+export type PushTokenPlatform = (typeof PushTokenPlatform)[keyof typeof PushTokenPlatform];
+
+export const PushTokenPlatform = {
+  android: "android",
+  ios: "ios",
+} as const;
+
+export interface PushToken {
+  /** UUID registration id. */
+  id: string;
+  platform: PushTokenPlatform;
+  /** @nullable */
+  device_label?: string | null;
+  /** Last registration/heartbeat timestamp (ISO). */
+  last_seen_at: string;
+}
+
 export interface AdminLoginBody {
   username: string;
   password: string;
@@ -3031,7 +3048,19 @@ export type AuthTelegramOidcLoginParams = {
    * Referral code captured at flow start; bound into the server-side state.
    */
   ref?: string;
+  /**
+   * R191: present (=1 or true) when the NATIVE app starts the flow — the state records it and the callback 302s to subnation://auth/callback#token=… (the app's own scheme) on success. Absent = the ordinary web flow.
+   */
+  native?: AuthTelegramOidcLoginNative;
 };
+
+export type AuthTelegramOidcLoginNative =
+  (typeof AuthTelegramOidcLoginNative)[keyof typeof AuthTelegramOidcLoginNative];
+
+export const AuthTelegramOidcLoginNative = {
+  NUMBER_1: "1",
+  true: "true",
+} as const;
 
 export type AuthTelegramOidcCallbackParams = {
   /**
@@ -3311,6 +3340,40 @@ export type ListNotificationsParams = {
    * @nullable
    */
   limit?: number | null;
+};
+
+export type RegisterPushTokenBodyPlatform =
+  (typeof RegisterPushTokenBodyPlatform)[keyof typeof RegisterPushTokenBodyPlatform];
+
+export const RegisterPushTokenBodyPlatform = {
+  android: "android",
+  ios: "ios",
+} as const;
+
+export type RegisterPushTokenBody = {
+  /**
+   * The Expo SDK-issued device token (ExponentPushToken[...]).
+   * @maxLength 255
+   */
+  expo_push_token: string;
+  platform: RegisterPushTokenBodyPlatform;
+  /**
+   * Optional caller-provided device label (e.g. "iPhone 15 of Ahmed").
+   * @maxLength 255
+   */
+  device_label?: string;
+};
+
+export type ListPushTokens200 = {
+  push_tokens?: PushToken[];
+};
+
+export type UnregisterPushTokenBody = {
+  /**
+   * The exact token the device previously registered.
+   * @maxLength 255
+   */
+  expo_push_token: string;
 };
 
 export type ListAdminOrdersParams = {

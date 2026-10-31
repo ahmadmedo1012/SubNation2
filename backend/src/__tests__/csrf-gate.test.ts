@@ -61,6 +61,8 @@ interface GateRequest {
   cookie?: string;
   origin?: string;
   referer?: string;
+  /** R192: the native transport's Authorization header. */
+  authorization?: string;
 }
 
 async function fire(app: Express, r: GateRequest): Promise<{ status: number; body: unknown }> {
@@ -76,6 +78,7 @@ async function fire(app: Express, r: GateRequest): Promise<{ status: number; bod
         if (r.cookie) headers.Cookie = r.cookie;
         if (r.origin) headers.Origin = r.origin;
         if (r.referer) headers.Referer = r.referer;
+        if (r.authorization) headers.Authorization = r.authorization;
         const res = await fetch(`http://127.0.0.1:${addr.port}${r.path}`, {
           method: r.method,
           headers,
@@ -305,6 +308,55 @@ describe("98-F3 — POST /api/auth/firebase/session is gated like every other mu
     });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ reached: true });
+  });
+});
+
+// ── R192: the NATIVE Bearer contract ─────────────────────────────────────
+
+describe("R192 — the native Bearer transport (Authorization header is NOT a CSRF exemption)", () => {
+  const GATE = () => buildGateApp(["https://subnation.ly"], true);
+
+  it("a Bearer mutation WITH an allowed Origin passes — the documented mobile contract", async () => {
+    // The native app sends `Authorization: Bearer <jwt>` + `Origin:
+    // https://subnation.ly` on every mutation (apps/mobile lib/api.ts's
+    // fetch shim). This pins that the gate lets exactly that shape through.
+    const res = await fire(GATE(), {
+      method: "POST",
+      path: "/api/notifications/push-tokens",
+      authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.native.sig",
+      origin: "https://subnation.ly",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ reached: true });
+  });
+
+  it("a Bearer mutation with NO Origin/Referer → 403 (Bearer authenticates, it does not authorize cross-site writes)", async () => {
+    const res = await fire(GATE(), {
+      method: "POST",
+      path: "/api/orders",
+      authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.native.sig",
+    });
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("a Bearer mutation with a FOREIGN Origin → 403", async () => {
+    const res = await fire(GATE(), {
+      method: "POST",
+      path: "/api/orders",
+      authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.native.sig",
+      origin: "https://evil.example",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("a Bearer GET without Origin passes (reads stay ungated)", async () => {
+    const res = await fire(GATE(), {
+      method: "GET",
+      path: "/api/orders",
+      authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.native.sig",
+    });
+    expect(res.status).toBe(200);
   });
 });
 

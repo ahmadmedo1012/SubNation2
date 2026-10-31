@@ -833,6 +833,13 @@
               <p>يمكن تثبيت المتجر كتطبيق على الجوال مع دعم أوفلاين جزئي وتحديث تلقائي.</p>
             </div>
             <div class="card">
+              <h4>📲 تطبيق جوال أصلي (Expo)</h4>
+              <p>
+                تطبيق أندرويد/iOS أصلي (React Native عبر Expo) بنفس الخلفية والعقد — تجربة المتجر
+                كاملة بالعربية مع إشعارات فورية ودخول بالواتساب أو تيليجرام.
+              </p>
+            </div>
+            <div class="card">
               <h4>🔒 أمان مُحصَّن</h4>
               <p>
                 CSP، حماية CSRF، تحديد معدل الطلبات على مستويات متعددة، تشفير بيانات الاعتماد،
@@ -865,12 +872,18 @@
             >
             ├── <b>frontend/</b>
             <i>— تطبيق React 19 + Vite 8 (SPA عربي RTL) — يُبنى ويُقدَّم من نفس الخادم</i> ├──
-            <b>shared/</b> <i>— المشترك بين الجهتين:</i> │ ├── <b>db/</b>
+            <b>apps/mobile/</b>
+            <i
+              >— تطبيق الجوال الأصيل (Expo SDK 58 / React Native) — تجربة المتجر كاملة بالعربية،
+              يستخدم نفس الـ API</i
+            >
+            ├── <b>shared/</b> <i>— المشترك بين الجهتين:</i> │ ├── <b>db/</b>
             <i>مخطط Drizzle + سلسلة هجرات SQL (مصدر الحقيقة للقاعدة)</i> │ ├── <b>api-spec/</b>
-            <i>عقد الـ OpenAPI (106 عملية)</i> │ ├── <b>api-zod/</b>
+            <i>عقد الـ OpenAPI (110 عملية)</i> │ ├── <b>api-zod/</b>
             <i>مخططات تحقق Zod (مولّدة آليًا من العقد)</i> │ ├── <b>api-client-react/</b>
-            <i>خطافات React Query (مولّدة آليًا — عميل الواجهة الأمامية)</i> │ └──
-            <b>error-codes/</b> <i>فهرس رموز الأخطاء المشترك (26 رمزًا)</i> ├── <b>scripts/</b>
+            <i>خطافات React Query للواجهة (مولّدة آليًا)</i> │ ├── <b>api-client-native/</b>
+            <i>عميل تطبيق الجوال (التوأم المولّد من نفس العقد)</i> │ └── <b>error-codes/</b>
+            <i>فهرس رموز الأخطاء المشترك (26 رمزًا)</i> ├── <b>scripts/</b>
             <i>— أدوات التشغيل المحلي: dev / seed / backup / validate</i> ├── <b>docs/</b>
             <i>— شجرة التوثيق الكاملة + سجلات الجولات الهندسية</i> ├── <b>config/</b>
             <i>— env.example: المرجع الكامل والمُعلَّق لمتغيرات البيئة</i> ├── <b>deploy/</b>
@@ -1009,7 +1022,8 @@
                 <td><b>عقد الـ API</b></td>
                 <td>OpenAPI 3 + orval</td>
                 <td>
-                  106 عملية موثّقة؛ يُولِّد آليًا: مخططات Zod + خطافات العميل — وCI يمنع أي انحراف
+                  110 عملية موثّقة؛ يُولِّد آليًا: مخططات Zod + خطافات العميل (توأمان: ويب + جوال) —
+                  وCI يمنع أي انحراف
                 </td>
               </tr>
               <tr>
@@ -1267,7 +1281,7 @@
 
         <!-- ============ 5 ============ -->
         <section id="s5">
-          <h2><span class="num" aria-hidden="true">٥</span> قاعدة البيانات — 38 جدولًا</h2>
+          <h2><span class="num" aria-hidden="true">٥</span> قاعدة البيانات — 39 جدولًا</h2>
           <p class="desc">
             PostgreSQL واحد عبر Drizzle ORM. المخطط مكتوب بـ TypeScript في <code>shared/db</code>
             وتُطبَّقه الهجرات التلقائية عند الإقلاع. هذه كل المجالات:
@@ -1337,12 +1351,13 @@
               </ul>
             </div>
             <div class="card">
-              <h4>🆘 الدعم والتنبيهات <span class="badge b-mute">5 جداول</span></h4>
+              <h4>🆘 الدعم والتنبيهات <span class="badge b-mute">6 جداول</span></h4>
               <ul>
                 <li>
                   <code>support_tickets</code> · <code>ticket_replies</code> — تذاكر الدعم ونقاشها
                 </li>
                 <li><code>notifications</code> — إشعارات المستخدمين (الجرس)</li>
+                <li><code>push_tokens</code> — توكينات الإشعارات الفورية لتطبيق الجوال (Expo)</li>
                 <li><code>admin_alerts</code> — تنبيهات المشرفين (درج التنبيهات + البث اللحظي)</li>
                 <li>
                   <code>audit_logs</code> — <b>سجل تدقيق كل عملية إدارية</b> (يُحتفظ به 180 يومًا)
@@ -1393,11 +1408,11 @@
 
         <!-- ============ 6 ============ -->
         <section id="s6">
-          <h2><span class="num" aria-hidden="true">٦</span> واجهة الـ API — 106 عملية موثّقة</h2>
+          <h2><span class="num" aria-hidden="true">٦</span> واجهة الـ API — 110 عملية موثّقة</h2>
           <p class="desc">
             كل مسار تحت <span class="ltr">/api</span>. العقد الكامل في
             <code>shared/api-spec/openapi.yaml</code>
-            ويُمنع أي انحراف بين العقد والمسارات الفعلية بواسطة CI. منها 79 عملية منفَّذة متزامنة مع
+            ويُمنع أي انحراف بين العقد والمسارات الفعلية بواسطة CI. منها 83 عملية منفَّذة متزامنة مع
             العقد حسب بوابة CI.
           </p>
 
@@ -2354,16 +2369,17 @@
         <!-- ============ 12 ============ -->
         <section id="s12">
           <h2><span class="num" aria-hidden="true">١٢</span> الأرقام الحالية</h2>
-          <p class="desc">لقطة الحالة عند إصدار هذا الدليل (الجولة R188 — 2026-10-26).</p>
+          <p class="desc">لقطة الحالة عند تحديث هذا الدليل (الجولة R191 — 2026-10-31).</p>
           <div class="stats">
             <div class="stat"><b>45</b><span>منتجًا في الكتالوج</span></div>
-            <div class="stat"><b>38</b><span>جدولًا في القاعدة</span></div>
-            <div class="stat"><b>106</b><span>عملية API موثّقة</span></div>
-            <div class="stat"><b>5,747</b><span>اختبار آلي</span></div>
+            <div class="stat"><b>39</b><span>جدولًا في القاعدة</span></div>
+            <div class="stat"><b>110</b><span>عملية API موثّقة</span></div>
+            <div class="stat"><b>5,802</b><span>اختبار آلي</span></div>
             <div class="stat"><b>26</b><span>رمز خطأ موحّد</span></div>
             <div class="stat"><b>149 KB</b><span>الحزمة الأولية (مضغوطة)</span></div>
             <div class="stat"><b>56</b><span>رابطًا في خريطة الموقع</span></div>
             <div class="stat"><b>~171</b><span>جزء JS في الإنتاج</span></div>
+            <div class="stat"><b>5</b><span>تبويبات في تطبيق الجوال</span></div>
           </div>
           <div class="note ok">
             <b>حالة الإنتاج:</b> <span class="ltr">healthz 200</span> · CI أخضر على كل الدفعات ·
@@ -2385,6 +2401,10 @@
               </tr>
             </thead>
             <tbody>
+              <tr>
+                <td>تطبيق الجوال (Expo) بالتفصيل</td>
+                <td><code>docs/mobile/README.md</code> + <code>ARCHITECTURE.md</code></td>
+              </tr>
               <tr>
                 <td>تشغيل المشروع محليًا لأول مرة</td>
                 <td><code>README.md</code> → قسم Local development</td>
