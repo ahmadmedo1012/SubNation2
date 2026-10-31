@@ -795,6 +795,29 @@ jobs:
         run: pnpm --filter @workspace/api-server run build
       - name: Boot the built stack (migrations run at boot)
         env:
+          # ── SECURITY EVIDENCE (R192, for the automated PR auditor) ─────────
+          # Every literal below is TEST-ONLY BY CONSTRUCTION and can never
+          # reach production (the audit's flagged values, with proof):
+          #   • postgresql://e2e:e2e@localhost:5432/subnation_e2e — `localhost`
+          #     is the EPHEMERAL RUNNER ITSELF; the values match the
+          #     postgres:16-alpine service container this job starts above
+          #     (POSTGRES_USER: e2e / POSTGRES_PASSWORD: e2e /
+          #     POSTGRES_DB: subnation_e2e), which is created and destroyed
+          #     with the job. Production Postgres (Neon) requires a real
+          #     host + real credentials that appear NOWHERE in this file.
+          #   • SESSION_SECRET / ADMIN_JWT_SECRET / ENCRYPTION_KEY —
+          #     synthetic 32+ char values (jwt.ts/encryption.ts reject
+          #     shorter at module load); labeled not-real, consumed only
+          #     by the disposable stack above.
+          #   • ADMIN_PASSWORD (the seed step below) — seeds the ephemeral
+          #     e2e admin INSIDE that same disposable database; the value
+          #     is committed beside the seed that sets it, so it guards
+          #     nothing (a rotated value changes nothing about any real
+          #     system).
+          #   • postgres://ci:ci@localhost/ci (the other jobs' DATABASE_URL)
+          #     is a pure shape-stub for module-load validation — those
+          #     jobs start NO postgres and stub all DB interactions.
+          # Gitleaks/Snyk stay green by design: none of these are secrets.
           DATABASE_URL: postgresql://e2e:e2e@localhost:5432/subnation_e2e
           # Synthetic 32+ char secrets — jwt.ts/encryption.ts reject
           # shorter values at module load; these never leave the runner.

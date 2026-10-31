@@ -86,6 +86,26 @@ const config: ExpoConfig = {
         color: "#dc1840",
       },
     ],
+    [
+      "@sentry/react-native/expo",
+      {
+        // R192: crash reporting returns. NOT sentry-expo (deprecated 2024,
+        // pins @sentry/react-native 5.x → the sentry-cocoa 8.7 SOURCE pod
+        // whose std::allocator<const T> profiling code failed EAS's Xcode
+        // clang — the 3 errored R191 builds). 8.28 pulls sentry-cocoa 9.29
+        // as a prebuilt xcframework: the broken C++ never compiles.
+        // Org/project/token are EAS build-time secrets the owner sets
+        // (SENTRY_ORG / SENTRY_PROJECT / SENTRY_AUTH_TOKEN); with no token
+        // present the upload phases are DISABLED — a credentials-less
+        // build can never fail on Sentry, and adding the secrets later
+        // activates source-map upload on the next build with zero code
+        // changes. The runtime init itself is EXPO_PUBLIC_SENTRY_DSN-gated
+        // (lib/sentry.ts) — no DSN, no telemetry, identical app behavior.
+        organization: process.env.SENTRY_ORG,
+        project: process.env.SENTRY_PROJECT,
+        ...(process.env.SENTRY_AUTH_TOKEN ? {} : { disableAutoUpload: true }),
+      },
+    ],
   ],
   extra: {
     eas: {

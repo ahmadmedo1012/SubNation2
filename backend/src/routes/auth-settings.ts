@@ -638,19 +638,25 @@ authProviderPublicRouter.get("/telegram/oidc/login", async (req, res) => {
     // R191 (backend mobile contracts): ?native=1 — the native app started
     // this flow in the system browser; the state carries the flag and the
     // callback then hands the minted session to the app's own URL scheme
-    // (subnation://auth/callback#token=…). Everything else (state
-    // single-use + 10-min TTL + PKCE) is identical to the web flow.
+    // (subnation://auth/callback#token=…&app_nonce=…). Everything else
+    // (state single-use + 10-min TTL + PKCE) is identical to the web flow.
     const nativeParam = query.native ?? query.native_client;
     const native = nativeParam === "1" || nativeParam === "true";
+    // R192 (security, F-1): the app-instance nonce — REQUIRED for native
+    // flows (the flow service rejects native starts without one; a web
+    // page must never be able to mint a native-transport session).
+    const appNonce = typeof query.app_nonce === "string" ? query.app_nonce : null;
     const start = await startTelegramOidcFlow({
       originHeader: (req.headers.origin as string | undefined) ?? undefined,
       redirect: typeof query.redirect === "string" ? query.redirect : null,
       referralCode: typeof query.ref === "string" ? query.ref : null,
       native,
+      appNonce,
     });
     if ("error" in start) {
-      // provider_disabled | misconfigured_origin — both are honest
-      // "not ready" states surfaced on the login page, never a mint.
+      // provider_disabled | misconfigured_origin | native_nonce_required
+      // — all honest "not ready" states surfaced on the login page,
+      // never a mint.
       return res.redirect(loginErrorRedirect(req, start.error));
     }
     return res.redirect(start.authorizationUrl);
@@ -705,20 +711,35 @@ authProviderPublicRouter.get("/telegram/oidc/callback", async (req, res) => {
 
     // Cookie-first session transport (F-010 parity with every other mint
     // route); the JWT never rides the URL.
-    res.cookie("auth_token", result.token, {
-      ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
-    });
+    // R192 (security, F-3): a NATIVE flow mints NO web cookie — the user's
+    // mental model is "I logged into the app", and a 30-day auth_token in
+    // the shared system browser (Custom Tabs / ASWebAuthenticationSession)
+    // is ambient web authority they never asked for. The app takes the
+    // token from the redirect fragment instead.
+    if (!result.native) {
+      res.cookie("auth_token", result.token, {
+        ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
+      });
+    }
     // R191 (backend mobile contracts): a NATIVE flow (state.native — set
-    // only when the login hop carried ?native=1) hands the session to the
-    // app's own URL scheme instead of the web redirect: 302 to
-    // subnation://auth/callback#token=<jwt> (URL-encoded; the fragment
-    // never reaches any server/proxy log the way a query string would).
-    // The OS routes the scheme to the installed app — no web page is
-    // involved. The state stays single-use + TTL + PKCE-verified (the
-    // flag rode the SAME server-held state), and the login was audited in
-    // the same logAuthActivity path as every web login, inside the flow.
+    // only when the login hop carried ?native=1 AND a valid app_nonce)
+    // hands the session to the app's own URL scheme instead of the web
+    // redirect: 302 to subnation://auth/callback#token=<jwt>&app_nonce=…
+    // (URL-encoded; the fragment never reaches any server/proxy log the
+    // way a query string would). The OS routes the scheme to the
+    // installed app — no web page is involved. The state stays
+    // single-use + TTL + PKCE-verified (the flag rode the SAME
+    // server-held state), and the login was audited in the same
+    // logAuthActivity path as every web login, inside the flow.
+    // R192 (security, F-1): app_nonce rides the fragment so the app can
+    // bind the token to the flow it started — a forged deep link without
+    // the nonce the app itself minted (and stored in SecureStore) is
+    // rejected client-side, never stored.
     if (result.native) {
-      return res.redirect(`subnation://auth/callback#token=${encodeURIComponent(result.token)}`);
+      const fragment =
+        `token=${encodeURIComponent(result.token)}` +
+        (result.appNonce ? `&app_nonce=${encodeURIComponent(result.appNonce)}` : "");
+      return res.redirect(`subnation://auth/callback#${fragment}`);
     }
     return res.redirect(result.redirect ?? "/auth/callback");
   } catch (err) {

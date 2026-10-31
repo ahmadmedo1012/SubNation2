@@ -3,12 +3,13 @@ import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 
 import { storeToken } from "@/lib/auth-store";
-import { extractTelegramCallbackToken, isTelegramAuthCallback } from "@/lib/telegram-auth";
+import { settleTelegramCallbackUrl, isTelegramAuthCallback } from "@/lib/telegram-auth";
 import { clearPendingReferral } from "@/hooks/use-whatsapp-otp";
 import { useAuth } from "@/lib/auth";
 
 /**
- * The Telegram native OIDC return route (subnation://auth/callback#token=…).
+ * The Telegram native OIDC return route (subnation://auth/callback#token=…
+ * &app_nonce=…).
  *
  * Review R7-a P2-5: the cold-start leg. Android routinely kills the
  * backgrounded app while the Chrome custom tab is open mid-auth; the
@@ -23,7 +24,12 @@ import { useAuth } from "@/lib/auth";
  * warm case (both call the same idempotent storeToken + signIn pair —
  * the second call is a no-op-shaped duplicate fetch at worst).
  *
- * A callback WITHOUT a token is a user cancellation — home, as a guest.
+ * R192 (security, F-1): the token is accepted ONLY when the callback's
+ * app_nonce matches the pending nonce the app itself minted and stored
+ * in SecureStore at flow start — a forged deep link (login-CSRF) is
+ * rejected and routed to the login screen; the stored session, if any,
+ * is left untouched. A callback WITHOUT a token is a user cancellation —
+ * home, as a guest.
  */
 export default function TelegramAuthCallbackRoute() {
   const router = useRouter();
@@ -39,20 +45,22 @@ export default function TelegramAuthCallbackRoute() {
         router.replace("/");
         return;
       }
-      const token = extractTelegramCallbackToken(url);
-      if (!token) {
-        // Cancellation / malformed callback — no credential to keep.
-        settledRef.current = true;
-        router.replace("/");
-        return;
-      }
-      settledRef.current = true;
       void (async () => {
+        const settlement = await settleTelegramCallbackUrl(url);
+        if (settlement.status !== "ok") {
+          // cancelled (no token) → home as a guest; rejected (injected
+          // or stale callback — F-1) → the login screen, where the
+          // user can simply retry the provider.
+          settledRef.current = true;
+          router.replace(settlement.status === "rejected" ? "/login" : "/");
+          return;
+        }
+        settledRef.current = true;
         try {
-          await storeToken(token);
+          await storeToken(settlement.token);
           // The referral attribution rode the OIDC login URL — spent.
           await clearPendingReferral();
-          await signIn(token);
+          await signIn(settlement.token);
         } finally {
           router.replace("/");
         }

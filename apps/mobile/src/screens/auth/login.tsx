@@ -11,8 +11,8 @@ import { isFirebaseAuthConfigured } from "@/lib/firebase";
 import { storeToken } from "@/lib/auth-store";
 import { getErrorMessage } from "@/lib/errors";
 import {
-  extractTelegramCallbackToken,
   isTelegramAuthCallback,
+  settleTelegramCallbackUrl,
   startTelegramOidcLogin,
 } from "@/lib/telegram-auth";
 import {
@@ -142,7 +142,9 @@ export function LoginScreen() {
     try {
       const referralCode = await readPendingReferral();
       const token = await startTelegramOidcLogin(referralCode ? { referralCode } : undefined);
-      // No token = user cancelled (or a tokenless redirect) — do nothing.
+      // No token = user cancelled, a tokenless redirect, or a REJECTED
+      // callback (R192 F-1 — the nonce did not match a flow this app
+      // instance started; never stored) — do nothing.
       if (!token) return;
       await completeExternalSignIn(token);
     } catch (err) {
@@ -163,9 +165,14 @@ export function LoginScreen() {
   useEffect(() => {
     const handleCallbackUrl = (raw: string | null) => {
       if (!isTelegramAuthCallback(raw)) return;
-      const token = extractTelegramCallbackToken(raw);
-      if (!token) return; // cancellation / malformed — no-op
-      void completeExternalSignIn(token);
+      // R192 (security, F-1): verify the app-instance nonce BEFORE any
+      // token is stored — a forged deep link is rejected here exactly
+      // like on the cold-start route.
+      void (async () => {
+        const settlement = await settleTelegramCallbackUrl(raw);
+        if (settlement.status !== "ok") return; // cancellation / rejected — no-op
+        await completeExternalSignIn(settlement.token);
+      })();
     };
     // The URL that launched the app, when THIS screen was the launch
     // target (e.g. the user tapped the login deep link directly).

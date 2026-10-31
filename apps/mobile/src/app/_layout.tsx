@@ -11,6 +11,12 @@ import { useColorScheme } from "react-native";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { CartProvider } from "@/lib/cart";
 import { useColors } from "@/theme";
+import { initSentry } from "@/lib/sentry";
+
+// R192: crash reporting (DSN-gated — a no-op without the owner's
+// EXPO_PUBLIC_SENTRY_DSN; see lib/sentry.ts). First statement of the
+// app: capture everything after this line.
+initSentry();
 
 // Arabic-first: force the layout direction RTL (applies from next launch
 // on non-RTL devices; Arabic-locale devices are RTL from the first frame).

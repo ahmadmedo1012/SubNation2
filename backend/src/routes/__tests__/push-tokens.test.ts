@@ -195,6 +195,73 @@ describe("POST /api/notifications/push-tokens (R191)", () => {
   });
 });
 
+describe("R192 — the native Bearer transport on a user route", () => {
+  // The mobile app authenticates every request with `Authorization:
+  // Bearer <jwt>` (SecureStore-held; no cookie jar). requireUser's
+  // header fallback is the contract — pinned here on the push-token
+  // surface, the most native-specific route there is.
+  it("Authorization: Bearer authenticates POST /push-tokens end to end (row created)", async () => {
+    const user = await seedUser();
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await fetch(`${url}/api/notifications/push-tokens`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${user.token}`,
+          Origin: "https://subnation.ly",
+        },
+        body: JSON.stringify({ expo_push_token: TOKEN_B, platform: "android" }),
+      });
+      expect(res.status).toBe(200);
+      const rows = await db.select().from(pushTokensTable);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ userId: user.id, expoPushToken: TOKEN_B });
+    } finally {
+      close();
+    }
+  });
+
+  it("Authorization: Bearer authenticates GET /push-tokens (the device list)", async () => {
+    const user = await seedUser();
+    await db.insert(pushTokensTable).values({
+      userId: user.id,
+      expoPushToken: TOKEN_A,
+      platform: "ios",
+    });
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await fetch(`${url}/api/notifications/push-tokens`, {
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { push_tokens: unknown[] };
+      expect(body.push_tokens).toHaveLength(1);
+    } finally {
+      close();
+    }
+  });
+
+  it("a garbage Bearer value → 401 (fail closed, same as an invalid cookie)", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await fetch(`${url}/api/notifications/push-tokens`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer not-a-jwt",
+          Origin: "https://subnation.ly",
+        },
+        body: JSON.stringify({ expo_push_token: TOKEN_B, platform: "android" }),
+      });
+      expect(res.status).toBe(401);
+      expect(await db.select().from(pushTokensTable)).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+});
+
 describe("DELETE /api/notifications/push-tokens (R191)", () => {
   it("the owner soft-revokes: 200, revoked_at set, row SURVIVES for audit", async () => {
     const user = await seedUser();

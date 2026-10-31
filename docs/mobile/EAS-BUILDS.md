@@ -59,7 +59,13 @@ one project keystore:
 
 - `EXPO_PUBLIC_API_URL` — API origin (defaults to `https://subnation.ly`)
 - `EXPO_PUBLIC_FIREBASE_*` — Google sign-in (4 vars; see `.env.example`)
-- `EXPO_PUBLIC_SENTRY_DSN` — reserved for the crash-reporting follow-up
+- `EXPO_PUBLIC_SENTRY_DSN` — crash reporting, DSN-gated (R192: the integration
+  is LIVE in the tree — unset DSN = disabled telemetry; see the Sentry
+  section below)
+- `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` — EAS build-time
+  secrets for source-map upload (app.config.ts activates the upload phases
+  the moment `SENTRY_AUTH_TOKEN` exists; absent = uploads disabled, never
+  a failed build)
 
 Backend secrets are NEVER bundled — only `EXPO_PUBLIC_*` values ship in the
 binary (build-time inlined).
@@ -94,3 +100,44 @@ npx eas-cli@latest build:list --platform all --limit 5
 4. **EAS Update** (`eas update:configure`) — channels are declared in
    `eas.json`; OTA publishing is deliberately left to the owner's first
    post-store release (no installed base yet to update).
+
+## Crash reporting — the R192 Sentry return (root-caused and fixed)
+
+R191 removed sentry-expo after 3 errored iOS builds. The R192 diagnosis
+(fetched the actual EAS build logs + upstream research):
+
+- **The failing package was `sentry-expo@7.x` — deprecated since Jan 2024**
+  (no fixes, no security patches). It hard-pins `@sentry/react-native@5.5.0`,
+  whose Podfile builds **sentry-cocoa 8.7.1 FROM SOURCE** — and 8.7.1's
+  profiling module contains `std::vector<const ThreadHandleMetadataPair>` /
+  `std::vector<const QueueMetadata>` (an invalid `std::allocator<const T>`
+  instantiation) that newer clang rejects. Upstream: getsentry/sentry-cocoa
+  #4886 / #5172; fixed in **sentry-cocoa 8.46.0 (2025-03-04)** via #4917/#4918;
+  `@sentry/react-native` 6.10.0 first carried the fix.
+- **The correct SDK 58 integration is `@sentry/react-native@~8.28.0`** (Expo's
+  `bundledNativeModules` pin) with **NO sentry-expo at all**: it consumes
+  **sentry-cocoa 9.29.0 as a PREBUILT xcframework** — the broken C++ is never
+  compiled on any toolchain.
+
+What landed (R192):
+
+| Piece | File | Behavior without owner config |
+|---|---|---|
+| Package | `@sentry/react-native@~8.28.0` | autolinks; prebuilt native — builds clean |
+| Metro | `apps/mobile/metro.config.js` (`getSentryExpoConfig`) | Debug-IDs in bundles/maps; Expo-router ErrorBoundary auto-wrap |
+| Config plugin | `app.config.ts` `@sentry/react-native/expo` | `disableAutoUpload: true` while `SENTRY_AUTH_TOKEN` is absent — a credentials-less build can never fail on Sentry |
+| Runtime init | `apps/mobile/src/lib/sentry.ts` (DSN-gated) | No `EXPO_PUBLIC_SENTRY_DSN` → never initializes: zero telemetry, identical behavior |
+
+Owner activation (configuration only — zero code changes):
+
+1. Sentry console → create the mobile project → set `EXPO_PUBLIC_SENTRY_DSN`
+   as an EAS environment variable (or in `.env`).
+2. For symbolicated stack traces set the EAS build secrets `SENTRY_ORG`,
+   `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` — source-map upload activates on the
+   next build automatically.
+3. A controlled test exception (`Sentry.captureException` from a debug
+   surface) then verifies the dashboard round-trip.
+
+Privacy posture: `sendDefaultPii: false`, no traces/profiles/replay —
+crash-and-exception reporting only; delivered credentials never pass through
+the SDK.

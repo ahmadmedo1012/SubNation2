@@ -44,8 +44,47 @@ clear — the web's identity-switch contract).
 | Provider | Native flow | State |
 |---|---|---|
 | **WhatsApp OTP** | phone (Libyan normalization: Arabic-Indic/Farsi digits, +218/00218/0 prefixes) → `POST /api/auth/whatsapp/start` → 6-digit code → `POST /api/auth/whatsapp/verify` → Set-Cookie capture | **Live** (production gateway: `whatsapp_status: ready`) |
-| **Telegram OIDC** | `GET /api/auth/telegram/oidc/login?native=1` in `expo-web-browser`; the state row records the native flag; the callback redirects successful auth to `subnation://auth/callback#token=<jwt>` (single-use state + PKCE + 10-min TTL unchanged; token lands ONLY in the app-scheme redirect) | **Live** (backend bridge landed R191; web flow untouched) |
+| **Telegram OIDC** | `GET /api/auth/telegram/oidc/login?native=1&app_nonce=<n>` in `expo-web-browser`; the state row records the native flag + the app-instance nonce; the callback redirects successful auth to `subnation://auth/callback#token=<jwt>&app_nonce=<n>` (single-use state + PKCE + 10-min TTL unchanged; token lands ONLY in the app-scheme redirect, NEVER a query string) | **Live** (backend bridge landed R191; R192 added the app-instance nonce binding — see below) |
 | **Google (Firebase)** | requires the Firebase Android/iOS apps to be registered in the owner's Firebase console (google-services.json / GoogleService-Info.plist + OAuth client) — a genuine owner-side prerequisite | **Pending owner config** — the button renders only when `EXPO_PUBLIC_FIREBASE_*` envs are set; `apps/mobile/.env.example` documents them |
+
+## The Telegram native bridge's app-instance nonce (R192, security)
+
+The R192 security review found the one real hole in the R191 bridge:
+any web page could open `subnation://auth/callback#token=<jwt>` directly
+(the login-CSRF class — a forged deep link silently substituting the
+victim's session with an attacker-minted JWT for the attacker's own
+account). The fix binds the returned token to a flow THIS app instance
+started:
+
+1. **Before the browser opens** the app mints a 24-byte CSPRNG nonce,
+   persists it in SecureStore (`subnation.telegram.pending_nonce`, 10-min
+   TTL — persistence, not just memory, keeps the Android cold-start leg
+   working when the OS kills the app mid-auth), and sends it on the login
+   hop: `…/oidc/login?native=1&app_nonce=<n>`.
+2. **The backend REQUIRES it** for native flows — a native login hop
+   without a valid `app_nonce` is refused up front
+   (`/login?error=native_nonce_required`, no state minted). A web page
+   can therefore never mint a native-transport session at all.
+3. **The callback echoes it**: `subnation://auth/callback#token=<jwt>&app_nonce=<n>`
+   (fragment only — `URLSearchParams`-parsed, the R191 loose-regex
+   fallback removed).
+4. **The app verifies before storing** (`settleTelegramCallbackUrl` —
+   the one gate shared by the cold-start route and the login screen's
+   warm listener): no pending nonce, an expired flow, a missing/mismatched
+   `app_nonce`, or an already-consumed nonce → **rejected, the token is
+   never stored, the existing session is untouched**. A matching nonce is
+   consumed on use (single use), and a 5-minute in-memory token-digest
+   window keeps the Android WebBrowser/Linking double-delivery race
+   idempotent for the SAME token while a different token stays rejected.
+5. **Native flows mint no web cookie** (R192 F-3): the 30-day
+   `auth_token` Set-Cookie is skipped entirely on native callbacks — a
+   native login must not leave ambient web authority in the shared system
+   browser (Custom Tabs / ASWebAuthenticationSession).
+
+Pinned by: `backend/src/routes/__tests__/telegram-oidc-native.test.ts`
+(8 tests — the nonce echo, the no-cookie contract, both refusal legs,
+single-use) and `apps/mobile/src/lib/__tests__/telegram-auth.test.ts`
+(17 tests — accept/reject/expiry/replay/double-delivery/RNG-fail-loud).
 
 ## Google native sign-in — the exact owner checklist (nothing else blocks)
 

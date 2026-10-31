@@ -46,6 +46,16 @@ export interface TelegramOidcStateValue {
    * ordinary web flow.
    */
   native?: boolean;
+  /**
+   * R192 (security, F-1): the app-instance nonce the native client minted
+   * at flow start (?app_nonce= on the login hop). The callback echoes it
+   * in the redirect fragment so the app can bind the returned token to a
+   * flow THIS app instance started — closing the deep-link token-injection
+   * hole (login-CSRF: a forged subnation://auth/callback#token= from a
+   * malicious site must never replace a stored session). Required for
+   * native flows; null on web flows.
+   */
+  appNonce?: string | null;
   /** Creation epoch ms (fallback-store expiry + telemetry). */
   createdAt: number;
 }

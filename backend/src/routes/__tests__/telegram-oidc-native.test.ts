@@ -20,13 +20,21 @@ import {
  * telegram-oidc-flow.test.ts idiom).
  *
  * Pinned contracts:
- *   - GET /api/auth/telegram/oidc/login?native=1 → the state record carries
- *     native: true (verified by consuming it directly);
- *   - the callback then 302s to subnation://auth/callback#token=<jwt> — the
- *     app's own URL scheme, token URL-encoded in the FRAGMENT — and the
- *     fragment token is the SAME jwt the httpOnly cookie carries;
+ *   - GET /api/auth/telegram/oidc/login?native=1&app_nonce=<n> → the state
+ *     record carries native: true + the app_nonce (verified by consuming it
+ *     directly);
+ *   - the callback then 302s to
+ *     subnation://auth/callback#token=<jwt>&app_nonce=<n> — the app's own
+ *     URL scheme, token URL-encoded in the FRAGMENT, the app-instance
+ *     nonce echoed beside it (R192 F-1: the client binds the token to the
+ *     flow it started);
+ *   - a NATIVE flow mints NO web cookie (R192 F-3 — no ambient browser
+ *     authority from an app login);
+ *   - native login WITHOUT a valid app_nonce is REFUSED up front
+ *     (R192 F-1 — a web page must never be able to mint a native-transport
+ *     session);
  *   - a state WITHOUT the native flag keeps the ordinary web redirect
- *     (/auth/callback, no token in the URL);
+ *     (/auth/callback, cookie set, no token in the URL);
  *   - the native state stays SINGLE-USE: a replayed callback fails closed
  *     (/login?error=oidc_state, no second mint).
  */
@@ -131,6 +139,19 @@ async function seedOidcSettings(): Promise<void> {
   );
 }
 
+/** A valid app-instance nonce (the shape the mobile client mints). */
+const APP_NONCE = "R192AppNonceTest1234567890abcd";
+
+/** Parse the native redirect's fragment into {token, app_nonce}. */
+function parseNativeFragment(location: string): { token: string; appNonce: string | null } {
+  expect(location.startsWith("subnation://auth/callback#")).toBe(true);
+  const fragment = location.slice("subnation://auth/callback#".length);
+  const params = new URLSearchParams(fragment);
+  const token = params.get("token");
+  expect(token).toBeTruthy();
+  return { token: token!, appNonce: params.get("app_nonce") };
+}
+
 /**
  * Start a flow through the REAL login route, then arm the token mock with
  * an id_token whose nonce matches the state (the flow test's
@@ -214,23 +235,48 @@ beforeEach(async () => {
   nextIdToken = "unconfigured";
 });
 
-describe("R191 — the native OIDC bridge (?native=1)", () => {
-  it("the login route binds native: true into the server-held state", async () => {
+describe("R191/R192 — the native OIDC bridge (?native=1&app_nonce=…)", () => {
+  it("the login route binds native: true + the app_nonce into the server-held state", async () => {
     const { url, close } = await listen();
     try {
-      const state = await startNativeFlow(url, "native=1");
-      // Verified inside the helper's consume: re-verify the flag directly.
+      const state = await startNativeFlow(url, `native=1&app_nonce=${APP_NONCE}`);
+      // Verified inside the helper's consume: re-verify the fields directly.
       const stored = await consumeTelegramOidcState(state);
       expect(stored?.native).toBe(true);
+      expect(stored?.appNonce).toBe(APP_NONCE);
     } finally {
       close();
     }
   });
 
-  it("a native flow mints → callback 302s to subnation://auth/callback#token=<jwt> (the fragment token IS the cookie token)", async () => {
+  it("R192 F-1: native login WITHOUT an app_nonce is REFUSED (no state minted)", async () => {
     const { url, close } = await listen();
     try {
-      const state = await startNativeFlow(url, "native=1");
+      const res = await get(url, `/api/auth/telegram/oidc/login?native=1`);
+      expect(res.status).toBe(302);
+      expect(res.location).toBe("/login?error=native_nonce_required");
+      expect(res.setCookie).toBeNull();
+    } finally {
+      close();
+    }
+  });
+
+  it("R192 F-1: native login with a MALFORMED app_nonce is REFUSED", async () => {
+    const { url, close } = await listen();
+    try {
+      // Too short + illegal characters — both violate the base64url 16-128 shape.
+      const res = await get(url, `/api/auth/telegram/oidc/login?native=1&app_nonce=short%21%21`);
+      expect(res.status).toBe(302);
+      expect(res.location).toBe("/login?error=native_nonce_required");
+    } finally {
+      close();
+    }
+  });
+
+  it("a native flow mints → callback 302s to subnation://auth/callback#token=<jwt>&app_nonce=<n> (R192 F-1: the nonce rides the fragment; F-3: NO web cookie)", async () => {
+    const { url, close } = await listen();
+    try {
+      const state = await startNativeFlow(url, `native=1&app_nonce=${APP_NONCE}`);
 
       const res = await get(
         url,
@@ -238,16 +284,15 @@ describe("R191 — the native OIDC bridge (?native=1)", () => {
       );
       expect(res.status).toBe(302);
       expect(res.location).toBeTruthy();
-      expect(res.location!.startsWith("subnation://auth/callback#token=")).toBe(true);
 
-      // The token rides the FRAGMENT (never a query string) and is the
-      // SAME jwt the httpOnly cookie carries.
-      const fragmentToken = decodeURIComponent(
-        res.location!.slice("subnation://auth/callback#token=".length),
-      );
-      expect(fragmentToken.split(".")).toHaveLength(3); // a real JWT shape
-      expect(res.setCookie).toContain(`auth_token=${fragmentToken}`);
-      expect(res.setCookie).toContain("HttpOnly");
+      const { token, appNonce } = parseNativeFragment(res.location!);
+      expect(token.split(".")).toHaveLength(3); // a real JWT shape
+      // F-1: the SAME app-instance nonce the login hop carried — the
+      // client's binding key, echoed back verbatim.
+      expect(appNonce).toBe(APP_NONCE);
+      // F-3: a native flow mints NO web cookie — no ambient browser
+      // authority from an app login.
+      expect(res.setCookie).toBeNull();
 
       // The login itself landed (the user + session row exist — the same
       // audit path as web logins).
@@ -267,10 +312,11 @@ describe("R191 — the native OIDC bridge (?native=1)", () => {
   it("the `native=true` spelling is accepted too", async () => {
     const { url, close } = await listen();
     try {
-      const state = await startNativeFlow(url, "native=true");
+      const state = await startNativeFlow(url, `native=true&app_nonce=${APP_NONCE}`);
       const res = await get(url, `/api/auth/telegram/oidc/callback?code=c2&state=${state}`);
       expect(res.status).toBe(302);
-      expect(res.location!.startsWith("subnation://auth/callback#token=")).toBe(true);
+      expect(res.location!.startsWith("subnation://auth/callback#")).toBe(true);
+      expect(parseNativeFragment(res.location!).appNonce).toBe(APP_NONCE);
     } finally {
       close();
     }
@@ -279,9 +325,9 @@ describe("R191 — the native OIDC bridge (?native=1)", () => {
   it("the native state stays SINGLE-USE: a replayed callback fails closed", async () => {
     const { url, close } = await listen();
     try {
-      const state = await startNativeFlow(url, "native=1");
+      const state = await startNativeFlow(url, `native=1&app_nonce=${APP_NONCE}`);
       const first = await get(url, `/api/auth/telegram/oidc/callback?code=c3&state=${state}`);
-      expect(first.location!.startsWith("subnation://auth/callback#token=")).toBe(true);
+      expect(first.location!.startsWith("subnation://auth/callback#")).toBe(true);
 
       // Replay the SAME state — consumed, so closed. No second mint.
       const replay = await get(url, `/api/auth/telegram/oidc/callback?code=c3&state=${state}`);

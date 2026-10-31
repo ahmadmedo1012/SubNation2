@@ -19,6 +19,15 @@ import { formatRelativeTime } from "@/screens/account/dates";
 import { SignInPrompt } from "@/screens/account/sign-in-prompt";
 
 /**
+ * F-4 (R192 security hardening): order codes are SN + 8-12 uppercase
+ * hex (round-94 F9 widened 8 → 12 for new orders; legacy rows carry 8).
+ * A deep-link param that does not match (path-traversal payloads,
+ * garbage) never reaches the generated client's raw path interpolation —
+ * the screen falls to its designed «الطلب غير موجود» branch.
+ */
+const ORDER_CODE_SHAPE = /^SN[0-9A-F]{8,12}$/;
+
+/**
  * Order detail — the native twin of the web's /orders/:code page:
  *   • a receipt header card (status accent bar, product identity, the
  *     two-rung delivery stepper, the amount — emphasis by weight/size
@@ -52,7 +61,7 @@ function OrderDetailContent({ orderCode }: { orderCode: string }) {
     error,
     refetch,
   } = useGetOrder(orderCode, {
-    query: { enabled: orderCode.length > 0 },
+    query: { enabled: ORDER_CODE_SHAPE.test(orderCode) },
   });
 
   // A 404 (ORDER_NOT_FOUND — unknown code / another user's order / stale
