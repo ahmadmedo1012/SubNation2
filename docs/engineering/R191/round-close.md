@@ -106,17 +106,31 @@ pre-existing risk). Full detail: the CHANGELOG R191 PR-hardening paragraph.
 
 | Build | Platform | Profile | Status | Artifact |
 |---|---|---|---|---|
-| `5fcaed32-376f-43db-bfd4-813ba57690f7` | iOS | development (simulator) | ✅ | eas/r-fdA3KakVWBT30YWIoSK4036ZDLUm1sMSp_ZhVMTWw.tar.gz |
-| `a1e88787-d425-4a2f-9d43-b23353d4f813` | Android | production (AAB) | ✅ | eas/23n4iIyZyQQ1G8afbA5rDAOnq_hN2179QTnpT5MO1Jo.aab |
-| `d463dec7-2bfb-42de-9b60-19a487278d30` | Android | development (APK) | ✅ | eas/Lf-gEgw7aGEjHIwnhZgpTpIKiLrd35k1U_LDWm7pAos.apk |
-| `42ea9b88-71f1-463c-b3f4-9dc782033503` | Android | development (post-sentry-removal = HEAD) | submitted at close | — |
+| `c539549d` | iOS | development (simulator) | ✅ FINISHED @ `3f72c452` — the CI-green final mobile tree (the PR-close wave's commits after it touch no apps/mobile file) | https://expo.dev/artifacts/eas/_GxvkqPf8kK_j5L7rG1R-mOgGXOobAxrx8aAuu4RGhE.tar.gz |
+| `42ea9b88` | Android | development (post-sentry-removal, pre-hardening tree) | ✅ finished | https://expo.dev/artifacts/eas/2XSow-qcjsOgGWuAz5cLfrCktNkJ0xw1PBHObbm9Png.apk |
+| `a1e88787` | Android | production (AAB) | ✅ finished | https://expo.dev/artifacts/eas/23n4iIyZyQQ1G8afbA5rDAOnq_hN2179QTnpT5MO1Jo.aab |
+| `5fcaed32` | iOS | development (simulator, pre-hardening tree) | ✅ finished | https://expo.dev/artifacts/eas/r-fdA3KakVWBT30YWIoSK4036ZDLUm1sMSp_ZhVMTWw.tar.gz |
 | `9c7ace3b` / `92cb5ec8` / `e37c0f38` | iOS | development | ❌ sentry-cocoa C++ static-assertion failures on EAS's Xcode toolchain → **sentry-expo removed from v1**, re-add path documented |
+
+**The PR-close state (honest):** the Android free-plan quota is SPENT
+(3/3 builds this month — resets Nov 1), so the final-tree Android
+development build is ONE command away (`cd apps/mobile && EXPO_TOKEN=…
+eas build --platform android --profile development --non-interactive`)
+instead of shipped. The Android-side evidence for the exact latest tree
+that DOES ship: `expo export --platform android` bundles clean (the new
+routes compiled in), `expo config` parses (8 verified intent filters),
+typecheck/lint/vitest green locally AND in CI's dedicated mobile leg, and
+the signing fingerprint every future build will carry is already
+extracted and committed in `assetlinks.json` (dev APK + production AAB
+share one signer: SHA256 `5D:D2:D9:…:A9:AC`, SHA1
+`AB:21:2D:…:A4:CB` — also the values the owner pastes into Firebase's
+Android app entry). Full detail: `docs/mobile/EAS-BUILDS.md`.
 
 ## I. Honest open items (owner actions)
 
-1. **On-device runtime verification** — not possible this round: the machine has no `/dev/kvm`/GPU (local emulator infeasible) and EAS Simulator is not enabled on the account (`simulator:availability → available:false`, waitlist https://expo.dev/services/simulators). Shipped evidence: typecheck/lint/tests/exports/cloud builds. The owner's first dev-build install on a real device completes the runtime leg.
-2. **Google native sign-in** — needs the Firebase console's Android/iOS app registration (google-services.json / GoogleService-Info.plist); the button is env-gated (`EXPO_PUBLIC_FIREBASE_*` in `.env.example`).
-3. **Deep-link activation** — replace the two well-known placeholders (EAS Play cert SHA256 + Apple Team ID) and rebuild.
+1. **On-device runtime verification** — not possible this round: the machine has no `/dev/kvm`/GPU (local emulator infeasible) and EAS Simulator is not enabled on the account (`simulator:availability → available:false`, waitlist https://expo.dev/services/simulators). Shipped evidence: typecheck/lint/tests/exports/cloud builds. The owner's first dev-build install on a real device completes the runtime leg. **Android quota note:** the free plan's Android builds are spent for October (3/3 — resets Nov 1); the final-tree Android dev build is the one command in `docs/mobile/EAS-BUILDS.md`.
+2. **Google native sign-in** — needs the Firebase console's Android/iOS app registration; the button is env-gated (`EXPO_PUBLIC_FIREBASE_*` in `.env.example`). The FULL checklist — including the already-extracted keystore SHA1/SHA256 to paste into the Android app entry and the backend `FIREBASE_*` Coolify envs — is `docs/mobile/AUTHENTICATION.md`'s «Google native sign-in — the exact owner checklist».
+3. **Deep-link activation** — the EAS keystore SHA256 is ALREADY committed in `assetlinks.json` (App Links verify for dev builds on deploy); remaining: append the Play App Signing SHA256 (Play Console → Release → Setup → App signing) and replace `TEAMID` in the AASA file, then redeploy.
 4. **Store submission** — needs the owner's Play Console + Apple Developer accounts (`eas submit` ready; metadata in EAS-BUILDS.md).
 5. **EAS Update** — channels declared; first OTA publish deliberately deferred to the first post-store release.
 6. **Crash reporting** — re-add sentry-expo once a release carries the patched sentry-cocoa (the init was DSN-gated; zero functionality lost in v1).

@@ -22,11 +22,38 @@
 
 | Build | Platform | Profile | Status | Artifact |
 |---|---|---|---|---|
-| `5fcaed32-376f-43db-bfd4-813ba57690f7` | iOS | development (simulator) | ✅ finished | https://expo.dev/artifacts/eas/r-fdA3KakVWBT30YWIoSK4036ZDLUm1sMSp_ZhVMTWw.tar.gz |
+| `c539549d-a790-4c03-9de7-02cdbe11e1b7` | iOS | development (simulator) | ✅ finished @ `3f72c452` (the CI-green final mobile tree; later commits touch no apps/mobile file) | https://expo.dev/artifacts/eas/_GxvkqPf8kK_j5L7rG1R-mOgGXOobAxrx8aAuu4RGhE.tar.gz |
+| `42ea9b88-71f1-463c-b3f4-9dc782033503` | Android | development (post-sentry-removal, pre-hardening tree) | ✅ finished | https://expo.dev/artifacts/eas/2XSow-qcjsOgGWuAz5cLfrCktNkJ0xw1PBHObbm9Png.apk |
 | `a1e88787-d425-4a2f-9d43-b23353d4f813` | Android | production | ✅ finished | https://expo.dev/artifacts/eas/23n4iIyZyQQ1G8afbA5rDAOnq_hN2179QTnpT5MO1Jo.aab |
-| `d463dec7-2bfb-42de-9b60-19a487278d30` | Android | development | ✅ finished | https://expo.dev/artifacts/eas/Lf-gEgw7aGEjHIwnhZgpTpIKiLrd35k1U_LDWm7pAos.apk |
-| `42ea9b88-71f1-463c-b3f4-9dc782033503` | Android | development (post-sentry-removal, matches HEAD) | submitted at round close | — |
+| `5fcaed32-376f-43db-bfd4-813ba57690f7` | iOS | development (simulator, pre-hardening tree) | ✅ finished | https://expo.dev/artifacts/eas/r-fdA3KakVWBT30YWIoSK4036ZDLUm1sMSp_ZhVMTWw.tar.gz |
 | `9c7ace3b`, `92cb5ec8`, `e37c0f38` | iOS | development | ❌ errored | the sentry-cocoa pod fails EAS's Xcode toolchain ("std::allocator does not support const types" profiling-thread static assertions) — sentry-expo REMOVED from v1; re-add after a patched release (see `.env.example` note) |
+
+**The Android quota boundary (PR close, 2026-10-31):** the account's
+free-plan Android builds for the month are SPENT (3/3 — dev, production,
+dev). A final-tree Android development build (the post-hardening tree —
+deep-link alias, tightened intent filters, socket catalog, foreground
+resync) is one command away the moment the quota resets (Nov 1) or the
+plan is upgraded:
+
+```bash
+cd apps/mobile && EXPO_TOKEN=<token> eas build --platform android --profile development --non-interactive
+```
+
+Until then the Android-side evidence for the EXACT latest tree is:
+`expo export --platform android` bundles clean (4 MB hbc with the new
+routes compiled in), `expo config` parses (8 verified intent filters),
+typecheck/lint/vitest green locally AND in CI's dedicated mobile leg,
+and the signing fingerprint of every future build is already known and
+committed (below).
+
+**The signing fingerprint (extracted from the artifacts, committed in
+`assetlinks.json`):** the dev APK's (`d463dec7`) v2 signing-block
+certificate and the production AAB's (`a1e88787`) JAR-signature
+certificate are byte-identical — EAS signs every Android build with the
+one project keystore:
+
+- SHA1: `AB:21:2D:9C:CC:4A:11:55:AD:CC:03:50:01:BA:CC:5D:ED:FD:A4:CB`
+- SHA256: `5D:D2:D9:0C:A5:33:3B:7A:3D:60:14:17:E5:B2:A7:14:95:DC:31:E9:DD:E8:BD:35:29:79:3A:6F:55:33:A9:AC`
 
 ## Environment configuration
 
