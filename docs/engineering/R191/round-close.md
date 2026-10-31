@@ -48,12 +48,23 @@ Native session: Set-Cookie JWT capture → SecureStore → Bearer + `Origin: htt
 | expo export | android ✅ (4.6–5.1 MB hbc) · ios ✅ |
 | root typecheck | ×6 chains green (native twin joined) |
 | root lint | 0 errors 0 warnings |
-| backend suite | full green (310 files; new: push-tokens 14, telegram-native 6, migrate-v1m37 5) |
+| backend suite | **313 files / 2,788 tests green after the PR reconciliation** (new: push-tokens 14, telegram-native 6, migrate-v1m37 5; ERRATA below) |
 | frontend suite | **320 / 2,913** (healed — the R188 count) |
 | scripts suite | 8 / 74 |
 | parity / error-code / header gates | 83 enforced · 26 synced · 9/9 |
 | drizzle + orval drift | clean (three-target regen) |
 | root build | green (budgets hold) |
+
+> **ERRATA (§G, recorded at the PR before merge):** the original close claimed
+> "backend suite full green (310 files)" — WRONG at the PR. The three legacy
+> migration-shape pins still carried the R181-era 38/29/35/128 numbers and failed
+> CI's backend leg (3 failures on `a0c59a18`). The reconciliation (same PR)
+> MEASURED the real end shape on both installation paths — fresh boot + the full
+> 0000..0028 chain replay, probe-verified equal table sets — at **39 tables /
+> 30 CHECKs / 36 FKs / 131 indexes** (push_tokens: +1 CHECK, +1 FK, +3 indexes),
+> re-based the pins to the measured numbers (never weakened; the chain's
+> must-exist list gained `push_tokens`), and reconciled every doc pinning the
+> same facts (PROJECT_GUIDE, source-of-truth #31, the CHANGELOG entry).
 
 ## H. EAS builds (account rh2011, project @rh2011/subnation)
 

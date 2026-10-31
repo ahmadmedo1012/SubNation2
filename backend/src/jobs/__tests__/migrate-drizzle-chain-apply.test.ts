@@ -157,6 +157,9 @@ describe("R143 (L9-2): the drizzle chain replays cleanly on a fresh database", (
       "audit_logs",
       "idempotency_keys",
       "system_settings",
+      // R191 (V1-M37 mirror): the mobile push infrastructure rides the
+      // chain as 0028 — a fresh chain-built install carries it.
+      "push_tokens",
     ]) {
       expect(tables.has(t), `chain-built schema is missing table ${t}`).toBe(true);
     }
@@ -167,16 +170,21 @@ describe("R143 (L9-2): the drizzle chain replays cleanly on a fresh database", (
       expect(tables.has(t), `retired table ${t} must not exist post-0027`).toBe(false);
     }
     // The L9 fresh-replay shape WITH the L9-1 fix applied, re-measured
-    // after R181's chain 0027 (copilot retirement): 38 tables /
-    // 29 CHECKs / 35 FKs / 128 indexes — the boot dry-run's shape minus
-    // the three copilot tables, their 4 FKs and their 12 indexes (9 explicit + the 3 table
-    // PKs; the two pg_trgm GIN indexes are the one environmental delta vs real
-    // Postgres, skipped exactly like ensurePgTrgmExtension degrades;
-    // R165/V1-M35's idx_orders_user_group still rides chain 0026).
-    expect(tables.size).toBe(38);
-    expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'c'")).toBe(29);
-    expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'f'")).toBe(35);
-    expect((await objectNames("index")).length).toBe(128);
+    // after R181's chain 0027 (copilot retirement) AND R191's chain 0028
+    // (push_tokens): 39 tables / 30 CHECKs / 36 FKs / 131 indexes —
+    // 38/29/35/128 + push_tokens' +1 table, +1 CHECK
+    // (chk_push_tokens_platform), +1 FK (push_tokens_user_id_users_id_fk,
+    // the sessions-style CASCADE family), +3 indexes
+    // (idx_push_tokens_user_id + the expo_push_token UNIQUE + the table
+    // PK; the two pg_trgm GIN indexes are the one environmental delta vs
+    // real Postgres, skipped exactly like ensurePgTrgmExtension degrades;
+    // R165/V1-M35's idx_orders_user_group still rides chain 0026). The
+    // boot-body suite measures the IDENTICAL shape — runtime-built and
+    // chain-built databases converge (probe-verified: equal table sets).
+    expect(tables.size).toBe(39);
+    expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'c'")).toBe(30);
+    expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'f'")).toBe(36);
+    expect((await objectNames("index")).length).toBe(131);
   });
 
   it("the money guards the invariants depend on are all present", async () => {
