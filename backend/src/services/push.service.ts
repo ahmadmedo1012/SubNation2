@@ -80,7 +80,12 @@ export async function sendPushToUser(userId: number, payload: PushPayload): Prom
       .select({ id: pushTokensTable.id, expoPushToken: pushTokensTable.expoPushToken })
       .from(pushTokensTable)
       .where(and(eq(pushTokensTable.userId, userId), isNull(pushTokensTable.revokedAt)))
-      .limit(EXPO_BATCH_LIMIT);
+      // Review R7-b (P3): the read cap now COVERS the device list's own
+      // cap (GET /push-tokens lists up to 200) — a 100-cap read silently
+      // dropped devices 101..200 from delivery while the UI showed them
+      // as active registrations. The batch loop below already chunks
+      // anything over EXPO_BATCH_LIMIT for the transport side.
+      .limit(200);
   } catch (err) {
     logger.warn(
       { category: "push", err: err instanceof Error ? err.message : String(err), userId },

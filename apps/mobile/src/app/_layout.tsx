@@ -1,8 +1,8 @@
-import { I18nManager } from "react-native";
+import { AppState, I18nManager } from "react-native";
 import { useEffect } from "react";
 import { Stack } from "expo-router";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
@@ -43,6 +43,34 @@ const queryClient = new QueryClient({
 });
 
 /**
+ * The native arm of the web's visibilitychange resync (review R7-a
+ * P2-2/P2-3): the web parks its socket when hidden and resyncs on
+ * visibility — the app's socket (and its event-driven invalidations)
+ * misses everything while backgrounded, so returning to the foreground
+ * must (a) refetch every on-screen query that went stale meanwhile,
+ * and (b) re-probe the session when boot degraded a VALID stored token
+ * to "guest" on a network failure (the probe's own catch-promise: the
+ * token may still be good for its full 30-day life — never strand a
+ * signed-in user behind sign-in walls for a whole app session).
+ */
+function useForegroundResync(): void {
+  const queryClient = useQueryClient();
+  const { status, refresh } = useAuth();
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      // refetchOnWindowFocus is deliberately false (web parity) — this is
+      // its replacement for native: only ACTIVE queries that are STALE
+      // refetch (screens not mounted are untouched; fresh data stays).
+      void queryClient.refetchQueries({ type: "active", stale: true });
+      if (status === "guest") void refresh();
+    });
+    return () => subscription.remove();
+  }, [queryClient, status, refresh]);
+}
+
+/**
  * Root shell: fonts → splash gate → themed navigation.
  * The splash stays visible until fonts load AND the auth hydration gate
  * settles (expo-data-fetching skill: never route on unhydrated state).
@@ -51,6 +79,8 @@ function RootShell({ children }: { children: React.ReactNode }) {
   const colors = useColors();
   const scheme = useColorScheme();
   const { status: authStatus } = useAuth();
+
+  useForegroundResync();
 
   // Metro's asset-module require() is the platform idiom for useFonts.
   const [fontsLoaded, fontsError] = useFonts({
@@ -112,6 +142,10 @@ export default function RootLayout() {
             >
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="login" options={{ presentation: "modal" }} />
+              {/* The Telegram OIDC return leg (cold-start deep link) + the
+                  web receipt-URL alias — both root-level, headerless. */}
+              <Stack.Screen name="auth/callback" />
+              <Stack.Screen name="orders/[orderCode]" />
               <Stack.Screen name="checkout" />
               <Stack.Screen name="onboarding" options={{ presentation: "fullScreenModal" }} />
             </Stack>

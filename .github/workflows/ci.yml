@@ -148,8 +148,8 @@ jobs:
               - "shared/**"
               - "scripts/**"
               # R191: the native Expo app joins the workspace — its source
-              # must trip the heavy jobs (lint/typecheck/tests/build) just
-              # like backend/frontend.
+              # must trip the heavy jobs just like backend/frontend (its
+              # own `mobile` quality leg + the shared checks/build/tests).
               - "apps/mobile/**"
               - "config/**"
               - "deploy/**"
@@ -416,13 +416,78 @@ jobs:
         # (orval 8.40 + zod version:3 pin). The generated clients are
         # COMMITTED, so "edit openapi.yaml, forget codegen" must fail
         # CI exactly like the drizzle mirror above fails schema edits.
+        # R191 fix (review R7-c P1): the diff now covers ALL THREE orval
+        # targets — api-zod + the react twin + the native twin. The
+        # codegen step always emitted all three; the gate only diffed
+        # two, so native-twin drift (hand edits, emission changes) rode
+        # green. The "three-target regen" claim is now literally true.
         run: |
           set -euo pipefail
           pnpm --filter @workspace/api-spec run codegen
-          if ! git diff --exit-code -- shared/api-zod/src shared/api-client-react/src; then
+          if ! git diff --exit-code -- shared/api-zod/src shared/api-client-react/src shared/api-client-native/src; then
             echo "::error::Orval drift detected. Run \`pnpm --filter @workspace/api-spec run codegen\` locally and commit the regenerated clients."
             exit 1
           fi
+
+  # Mobile quality — R191's own CI leg (review R7-c P2): apps/mobile
+  # carried ~35k lines with ZERO CI quality coverage while the path-
+  # filter comment claimed parity ("its source must trip the heavy
+  # jobs just like backend/frontend"). This leg makes the claim true:
+  # typecheck + expo lint + the vitest suite, one job, same
+  # if/permissions/env contract as the `tests` matrix. Runs after the
+  # secret-scan/filter gates; needs nothing else (self-contained
+  # install + the three scripts).
+  mobile:
+    name: Mobile quality (typecheck, lint, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [secret-scan, filter]
+    # Same docs-only skip contract as `checks`/`tests` — apps/mobile/**
+    # is inside the `code` filter, so mobile pushes always run this leg.
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      needs.filter.outputs.code == 'true'
+    permissions:
+      contents: read
+    env:
+      # Synthetic values — mirrors the sibling jobs (the mobile suite
+      # stubs all network/DB interactions; the shared client's module
+      # graph still reads these at import time).
+      DATABASE_URL: postgres://ci:ci@localhost/ci
+      SESSION_SECRET: ci-test-secret-not-real-do-not-use-in-prod
+      HUSKY: "0"
+      # Expo CLI hard requirements for CI: no telemetry, no prompts.
+      CI: "true"
+      EXPO_NO_TELEMETRY: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c2454462765ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck the mobile app
+        run: pnpm --filter @workspace/mobile run typecheck
+
+      - name: Lint the mobile app (expo lint)
+        run: pnpm --filter @workspace/mobile run lint
+
+      - name: Run the mobile vitest suite
+        run: pnpm --filter @workspace/mobile run test:run
 
   # Unit tests — one matrix leg per suite (R127-L4 split). fail-fast:
   # false so a backend red does not cancel the frontend leg — both

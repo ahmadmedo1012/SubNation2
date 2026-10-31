@@ -40,20 +40,32 @@ const config: ExpoConfig = {
       monochromeImage: "./assets/images/adaptive-monochrome.png",
     },
     softwareKeyboardLayoutMode: "resize",
-    intentFilters: [
-      {
+    // Review R7-a (P2-4): the filters claim EXACTLY the web URLs the app
+    // can render — the shareable families (/product/*, /category/*,
+    // /orders/* — the web's receipt URL, resolvable via the
+    // src/app/orders/[orderCode] alias) + the home root. The previous
+    // domain-wide pathPrefix "/" claimed every subnation.ly page while
+    // single-segment app-unknown paths (/status, /flash-sales, …) fell
+    // into the root [orderCode] route and rendered «الطلب غير موجود» —
+    // web-only pages now correctly stay in the browser. One filter per
+    // (host, path-spec) pair — Android cross-products attributes across
+    // data elements inside ONE filter, so separate filters are the
+    // unambiguous form. Mirrors the iOS AASA's curated component set.
+    intentFilters: (
+      [
+        { path: "/" },
+        { pathPrefix: "/product/" },
+        { pathPrefix: "/category/" },
+        { pathPrefix: "/orders/" },
+      ] as const
+    ).flatMap((spec) =>
+      ["subnation.ly", "www.subnation.ly"].map((host) => ({
         action: "VIEW",
         autoVerify: true,
-        data: [{ scheme: "https", host: "subnation.ly", pathPrefix: "/" }],
+        data: [{ scheme: "https", host, ...spec }],
         category: ["BROWSABLE", "DEFAULT"],
-      },
-      {
-        action: "VIEW",
-        autoVerify: true,
-        data: [{ scheme: "https", host: "www.subnation.ly", pathPrefix: "/" }],
-        category: ["BROWSABLE", "DEFAULT"],
-      },
-    ],
+      })),
+    ),
   },
   plugins: [
     "expo-router",

@@ -152,7 +152,14 @@ export function LoginScreen() {
     }
   }, [telegramBusy, completeExternalSignIn]);
 
-  // ── Cold-start + warm deep links (subnation://auth/callback#token=…) ──
+  // ── Warm deep links (subnation://auth/callback#token=…) ─────────────
+  // The COLD-start leg lives in the root route src/app/auth/callback.tsx
+  // (review R7-a P2-5: a backgrounded app killed mid-auth relaunches
+  // straight into that URL — this screen never mounts in that world).
+  // Here: the auth-session redirect while this screen IS open. On
+  // Android the WebBrowser session ALSO lands here alongside its own
+  // promise resolution — completeExternalSignIn is idempotent
+  // (storeToken + getMe) and the routing guard below fires once.
   useEffect(() => {
     const handleCallbackUrl = (raw: string | null) => {
       if (!isTelegramAuthCallback(raw)) return;
@@ -160,12 +167,10 @@ export function LoginScreen() {
       if (!token) return; // cancellation / malformed — no-op
       void completeExternalSignIn(token);
     };
-    // Cold start: the URL that launched the app.
+    // The URL that launched the app, when THIS screen was the launch
+    // target (e.g. the user tapped the login deep link directly).
     void Linking.getInitialURL().then(handleCallbackUrl);
     // Warm: the auth-session redirect while the login screen is open.
-    // On Android the WebBrowser session ALSO lands here alongside its
-    // own promise resolution — completeExternalSignIn is idempotent
-    // (storeToken + getMe) and the routing guard below fires once.
     const subscription = Linking.addEventListener("url", ({ url }) => handleCallbackUrl(url));
     return () => subscription.remove();
   }, [completeExternalSignIn]);

@@ -30,8 +30,14 @@ import { getStoredToken } from "./auth-store";
 
 const DEFAULT_API_URL = "https://subnation.ly";
 
-/** API origin — the base URL for every request (and the CSRF Origin value). */
-export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL;
+/**
+ * API origin — the base URL for every request (and the CSRF Origin value).
+ * Normalized once at module load (review R7-a P3): a trailing-slash
+ * EXPO_PUBLIC_API_URL would otherwise silently kill the Origin shim's
+ * `target.startsWith(`${API_URL}/`)` match (and emit `//api/…` URLs) —
+ * every mutation would 403 on the CSRF gate.
+ */
+export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(/\/+$/, "");
 
 /** Absolute URL for an /api path. */
 export function apiUrl(path: string): string {

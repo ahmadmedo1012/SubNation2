@@ -66,6 +66,42 @@ Native session: Set-Cookie JWT capture → SecureStore → Bearer + `Origin: htt
 > must-exist list gained `push_tokens`), and reconciled every doc pinning the
 > same facts (PROJECT_GUIDE, source-of-truth #31, the CHANGELOG entry).
 
+## G-bis. The 171-file PR review (the hardening wave, landed in the PR)
+
+Three independent read-only review lenses swept the full diff (mobile app ·
+backend contracts · workspace/CI/Docker). All three verdicts: **mergeable** —
+the money paths judged the strongest code in the PR. Findings fixed in the PR:
+
+- **P1** — the orval drift gate diffed only 2 of the 3 generated targets (the
+  native twin's 17k lines were never enforced); now all three.
+- **P2** — apps/mobile had zero CI quality coverage while the path-filter
+  comment claimed parity; a dedicated `mobile` CI leg (typecheck + expo lint +
+  vitest) now runs on every code push; the header-params gate scans both twins.
+- **P2** — the socket event catalog: dead `wallet` listener removed;
+  `order-updated` (the refund money path) + `notification-new` wired; a
+  reconnect-resync sweep on `connect` (the web's R-140-o rule).
+- **P2** — foreground resync (AppState → refetch active-stale) + guest-recovery
+  re-probe (a valid stored token degraded by an offline boot no longer strands
+  the user behind sign-in walls).
+- **P2** — deep links: `/orders/[orderCode]` web-URL alias (the web receipt URL
+  resolves in-app); Android intent filters tightened from the domain-wide
+  claim to exactly the renderable web paths (8 unambiguous filters).
+- **P2** — the Telegram OIDC cold-start leg: a dedicated `auth/callback` route
+  owns the return (a backgrounded app killed mid-auth no longer loses the
+  minted JWT to +not-found).
+- **P3** — push-service read cap 100→200 (covers the device-list cap);
+  `/.well-known` contract tests (3); EXPO_PUBLIC_API_URL trailing-slash
+  normalization; the error-state hex through the theme token; prettierignore
+  twin symmetry.
+
+Consciously not fixed (recorded, bounded): sync re-entry guards (verbatim web
+port — server-side dedupe is the real defense); native-flow failure legs (UX
+follow-up); the web cookie minted on native flows (deliberate web-parity);
+buy-intent slot + push registration unwired (honest scoping); no local
+docker-verify (the pnpm-filter mechanism verified by simulation + the CI
+production build; the merge deploy is the first real Docker run — the standing
+pre-existing risk). Full detail: the CHANGELOG R191 PR-hardening paragraph.
+
 ## H. EAS builds (account rh2011, project @rh2011/subnation)
 
 | Build | Platform | Profile | Status | Artifact |

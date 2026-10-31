@@ -32,6 +32,7 @@ export function LoadingState({ label = "جارٍ التحميل…" }: { label?:
 }
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const colors = useColors();
   return (
     <View
       style={{
@@ -46,7 +47,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
       <SymbolView
         name={"wifi.exclamationmark" as never}
         size={40}
-        tintColor="#ed5a5a"
+        tintColor={colors.error}
         fallback={<View style={{ width: 40, height: 40 }} />}
       />
       <ThemedText variant="headline">حدث خطأ</ThemedText>
