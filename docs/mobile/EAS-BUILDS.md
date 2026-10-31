@@ -56,10 +56,14 @@ npx eas-cli@latest build:list --platform all --limit 5
    EAS manages the signing keys via `eas credentials`.
 3. **Deep links**: `/.well-known/assetlinks.json` and
    `/.well-known/apple-app-site-association` are SERVED by the backend
-   (R191) with placeholder fingerprints — replace
-   `REPLACE_WITH_EAS_PLAY_CERT_SHA256` (from `eas credentials` after the
-   first production Android build) and `REPLACE_WITH_APPLE_TEAM_ID`, then
-   rebuild to activate verified App Links / Universal Links.
+   (R191). The EAS keystore's REAL SHA256 is already committed
+   (`5D:D2:D9:…:A9:AC` — extracted from the signed artifacts; the dev APK
+   and the production AAB carry the same signer), so App Links verify on
+   dev/preview installs once the backend deploys. Remaining owner actions:
+   APPEND the Play App Signing SHA256 (Play Console → Release → Setup → App
+   signing, after the app entry exists) and replace `TEAMID` (Apple
+   Developer membership page) in `backend/src/routes/well-known.ts`, then
+   redeploy.
 4. **EAS Update** (`eas update:configure`) — channels are declared in
    `eas.json`; OTA publishing is deliberately left to the owner's first
    post-store release (no installed base yet to update).

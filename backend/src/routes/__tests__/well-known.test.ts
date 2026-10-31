@@ -13,7 +13,10 @@ import express, { type Express } from "express";
  *   - /.well-known/assetlinks.json: application/json; charset=utf-8,
  *     the 7-day public immutable cache, the exact Android statement
  *     (delegate_permission/common.handle_all_urls, android_app namespace,
- *     package ly.subnation.app, one SHA256 fingerprint slot);
+ *     package ly.subnation.app) with the REAL EAS keystore SHA256 (the
+ *     fingerprint extracted from the signed artifacts — a keystore
+ *     rotation must consciously re-pin this suite) plus the Play App
+ *     Signing placeholder that remains an owner action;
  *   - /.well-known/apple-app-site-association: the BARE path (no .json
  *     suffix — Apple's verifier requires exactly this name),
  *     application/json; charset=utf-8, the same cache family, the
@@ -21,9 +24,9 @@ import express, { type Express } from "express";
  *     shareable path families (product/category/orders — each one has
  *     a matching in-app route incl. the /orders/[orderCode] web-URL
  *     alias);
- *   - both files carry the PLACEHOLDER credentials (the documented
- *     owner actions) — the placeholders are pinned by name so a swap
- *     is a conscious act that updates this suite too;
+ *   - both files carry their remaining PLACEHOLDER credentials (the
+ *     documented owner actions) — the placeholders are pinned by name
+ *     so a swap is a conscious act that updates this suite too;
  *   - unknown /.well-known/* paths 404 (nothing else is exposed).
  */
 
@@ -84,9 +87,14 @@ describe("R191 (backend mobile contracts): /.well-known deep-link association fi
       expect(body[0]!.relation).toEqual(["delegate_permission/common.handle_all_urls"]);
       expect(body[0]!.target.namespace).toBe("android_app");
       expect(body[0]!.target.package_name).toBe("ly.subnation.app");
-      // One fingerprint slot, placeholder-shaped (the owner's EAS action).
-      expect(body[0]!.target.sha256_cert_fingerprints).toHaveLength(1);
-      expect(body[0]!.target.sha256_cert_fingerprints[0]).toBe("PLACEHOLDER_SHA256_WHEN_EAS_SIGNS");
+      // Two fingerprint slots: the REAL EAS keystore (extracted from the
+      // signed artifacts — dev APK and production AAB agree byte-for-byte;
+      // pinned by value so a keystore rotation re-pins this suite) + the
+      // Play App Signing placeholder (the owner's remaining action).
+      expect(body[0]!.target.sha256_cert_fingerprints).toEqual([
+        "5D:D2:D9:0C:A5:33:3B:7A:3D:60:14:17:E5:B2:A7:14:95:DC:31:E9:DD:E8:BD:35:29:79:3A:6F:55:33:A9:AC",
+        "PLACEHOLDER_PLAY_APP_SIGNING_SHA256",
+      ]);
     } finally {
       close();
     }

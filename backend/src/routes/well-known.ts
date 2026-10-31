@@ -11,22 +11,25 @@ import { Router } from "express";
  * cache, no CSRF/auth — the CSRF Origin gate only covers
  * POST/PUT/DELETE/PATCH and these are GET static JSON.
  *
- * ── PLACEHOLDER DISCIPLINE (owner actions, R191) ─────────────────────────
+ * ── CREDENTIAL DISCIPLINE (owner actions, R191 + the PR-hardening wave) ──
  *
- * Both files ship with placeholder credentials that MUST be replaced before
- * the corresponding platform will actually open the app (until then the OS
- * falls back to opening the web page — the routes/JSON are correct, the
- * association is simply not yet attestable):
+ * Android App Links (assetlinks.json):
+ *   • The EAS-managed keystore's SHA256 is IN THE FILE (extracted from
+ *     the signed artifacts themselves — the dev APK and the production
+ *     AAB carry the SAME signer, byte-identical fingerprints; EAS signs
+ *     every Android build with the one project keystore). App Links
+ *     verification therefore SUCCEEDS for sideloaded dev/preview
+ *     installs the moment this file deploys.
+ *   • PLACEHOLDER_PLAY_APP_SIGNING_SHA256 remains: Google Play App
+ *     Signing re-signs production installs with Google's own key — its
+ *     SHA256 comes from Play Console (Release → Setup → App signing)
+ *     once the owner creates the app entry. APPEND it to the array
+ *     (keep the EAS fingerprint — dev builds keep verifying against
+ *     it), then redeploy.
  *
- *   • assetlinks.json — the SHA256 of the Play App Signing cert is NOT
- *     knowable until EAS generates the Android production credentials.
- *     After the first EAS Android production build the owner runs
- *     `eas credentials` (Android section → fingerprint) and replaces
- *     PLACEHOLDER_SHA256_WHEN_EAS_SIGNS with the real
- *     AA:BB:… colon-hex SHA256 fingerprint.
- *   • apple-app-site-association — TEAMID is the Apple Developer
- *     Program's Team ID (membership page), swapped into
- *     "TEAMID.ly.subnation.app" once known.
+ * iOS Universal Links (apple-app-site-association):
+ *   • TEAMID is the Apple Developer Program's Team ID (membership
+ *     page), swapped into "TEAMID.ly.subnation.app" once known.
  *
  * Recorded as pending operator actions in OPERATIONS_RUNBOOK.md §14.
  */
@@ -34,9 +37,10 @@ import { Router } from "express";
 const router = Router();
 
 // Android App Links statement (developers.google.com/digital-asset-links).
-// PLACEHOLDER_SHA256_WHEN_EAS_SIGNS: replaced by the owner with the Play
-// signing cert's SHA256 after the first EAS Android production build
-// (eas credentials reveals it) — see the module doc above.
+// The EAS keystore SHA256 was extracted from the signed artifacts (the dev
+// APK's v2 signing block and the production AAB's JAR signature agree
+// byte-for-byte); PLACEHOLDER_PLAY_APP_SIGNING_SHA256 awaits Play Console's
+// app-signing key — see the module doc above.
 const ASSET_LINKS_BODY = JSON.stringify(
   [
     {
@@ -44,7 +48,18 @@ const ASSET_LINKS_BODY = JSON.stringify(
       target: {
         namespace: "android_app",
         package_name: "ly.subnation.app",
-        sha256_cert_fingerprints: ["PLACEHOLDER_SHA256_WHEN_EAS_SIGNS"],
+        sha256_cert_fingerprints: [
+          // The EAS-managed Android keystore — signs EVERY EAS build
+          // (dev APK + production AAB; verified identical on both
+          // artifacts). Dev/preview installs verify App Links against
+          // THIS fingerprint.
+          "5D:D2:D9:0C:A5:33:3B:7A:3D:60:14:17:E5:B2:A7:14:95:DC:31:E9:DD:E8:BD:35:29:79:3A:6F:55:33:A9:AC",
+          // Google Play App Signing's key — the owner appends the real
+          // SHA256 from Play Console (Release → Setup → App signing)
+          // after creating the app entry; production Play installs
+          // verify against that one.
+          "PLACEHOLDER_PLAY_APP_SIGNING_SHA256",
+        ],
       },
     },
   ],
