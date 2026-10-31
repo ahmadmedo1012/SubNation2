@@ -732,7 +732,8 @@ jobs:
   #
   # The suite is the SAME specs the heartbeat runs — zero forked
   # expectations. Local reproduction: the recipe is a straight script
-  # (boot → wait /healthz → seed → playwright); verified end-to-end
+  # (boot → wait /api/healthz — the GATED liveness, not the SPA-shell
+  # /healthz → seed → playwright); verified end-to-end
   # before landing (144 tests × 3 projects green, incl. the re-pinned
   # cart-drain quantity + the GA4 dataLayer shape fix).
   e2e-hermetic:
@@ -813,10 +814,18 @@ jobs:
           node --enable-source-maps ./dist/index.mjs > "$RUNNER_TEMP/server.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/server.pid"
           cd ..
-      - name: Wait for /healthz
+      - name: Wait for /api/healthz (the REAL boot gate)
+        # The probe MUST be /api/healthz — the gated liveness that answers
+        # 503 {"status":"starting"} until bootstrapCore (the boot
+        # migrations) resolves, then 200. The bare /healthz this step used
+        # to curl is the SPA-shell catch-all: a static GET that PASSES the
+        # boot gate instantly, so the wait was a no-op and the seed could
+        # start while the 339-statement reconcile was still running — the
+        # 42703 (admin_users.permissions) seed race that flaked the push
+        # run on 3f72c452 while the PR-event run passed two minutes later.
         run: |
           for i in $(seq 1 90); do
-            if curl -sf http://localhost:8080/healthz > /dev/null; then
+            if curl -sf http://localhost:8080/api/healthz > /dev/null; then
               echo "stack healthy after ${i}s"; exit 0
             fi
             if ! kill -0 "$(cat "$RUNNER_TEMP/server.pid")" 2>/dev/null; then

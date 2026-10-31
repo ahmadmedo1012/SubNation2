@@ -47,6 +47,44 @@ clear — the web's identity-switch contract).
 | **Telegram OIDC** | `GET /api/auth/telegram/oidc/login?native=1` in `expo-web-browser`; the state row records the native flag; the callback redirects successful auth to `subnation://auth/callback#token=<jwt>` (single-use state + PKCE + 10-min TTL unchanged; token lands ONLY in the app-scheme redirect) | **Live** (backend bridge landed R191; web flow untouched) |
 | **Google (Firebase)** | requires the Firebase Android/iOS apps to be registered in the owner's Firebase console (google-services.json / GoogleService-Info.plist + OAuth client) — a genuine owner-side prerequisite | **Pending owner config** — the button renders only when `EXPO_PUBLIC_FIREBASE_*` envs are set; `apps/mobile/.env.example` documents them |
 
+## Google native sign-in — the exact owner checklist (nothing else blocks)
+
+The app-side wiring is a documented follow-up (the button is env-gated with
+an honest «قريباً» until then), so this is preparation work the owner can do
+in one sitting — every value below is already extracted/known:
+
+1. **Firebase console** (console.firebase.google.com) → the project that
+   already backs the site's Google login → Project settings → General →
+   **Your apps** → register BOTH:
+   - Android app, package `ly.subnation.app`
+   - iOS app, bundle ID `ly.subnation.app`
+2. **Add the signing fingerprints to the ANDROID app entry** (Firebase
+   console → the Android app → Add fingerprint — BOTH lines):
+   - SHA1: `AB:21:2D:9C:CC:4A:11:55:AD:CC:03:50:01:BA:CC:5D:ED:FD:A4:CB`
+   - SHA256: `5D:D2:D9:0C:A5:33:3B:7A:3D:60:14:17:E5:B2:A7:14:95:DC:31:E9:DD:E8:BD:35:29:79:3A:6F:55:33:A9:AC`
+
+   These are the EAS-managed keystore's fingerprints, extracted from the
+   signed artifacts themselves (the dev APK and the production AAB carry
+   the same signer — EAS signs every Android build with the one project
+   keystore). After Play App Signing is set up, ALSO add the Play
+   app-signing key's SHA1/SHA256 (same console page, from Play Console →
+   Release → Setup → App signing).
+3. **The four public values** (Project settings → General → the app's
+   config: google-services.json / GoogleService-Info.plist) become the
+   EAS build environment (apps/mobile/.env or EAS envs):
+   `EXPO_PUBLIC_FIREBASE_API_KEY` · `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN` ·
+   `EXPO_PUBLIC_FIREBASE_PROJECT_ID` · `EXPO_PUBLIC_FIREBASE_APP_ID`
+   — all four documented in `apps/mobile/.env.example`.
+4. **The backend side** (Coolify env, config/env.example's Firebase
+   block): `FIREBASE_AUTH_ENABLED=true` + `FIREBASE_PROJECT_ID` +
+   `FIREBASE_SERVICE_ACCOUNT_JSON` (the admin service-account JSON —
+   Project settings → Service accounts → Generate new private key). The
+   backend's `verifyIdToken` path (`firebase-auth.service.ts`) is
+   already live code — only the envs are absent.
+5. A small follow-up round wires the mobile SDK
+   (`@react-native-google-signin` + the firebase JS SDK) — the button
+   then becomes functional the moment the envs above are present.
+
 ## What was deliberately NOT done
 
 - No refresh-token rotation subsystem: the JWT is 30-day, revocable, and the

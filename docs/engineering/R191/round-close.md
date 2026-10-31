@@ -43,7 +43,7 @@ Native session: Set-Cookie JWT capture → SecureStore → Bearer + `Origin: htt
 
 | Gate | Result |
 |---|---|
-| expo-doctor | 20/20 |
+| expo-doctor | 19/20 — the one failing check is the duplicate-react warning, i.e. THE DELIBERATE two-client architecture itself (web react 19.1.0 · mobile 19.3.0, the R172 law); re-measured honestly at the PR (the original 20/20 claim didn't survive the fresh-install doctor run) |
 | mobile tsc / lint / vitest | 0 errors / 0 problems / **27/27** |
 | expo export | android ✅ (4.6–5.1 MB hbc) · ios ✅ |
 | root typecheck | ×6 chains green (native twin joined) |
